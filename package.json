@@ -30,6 +30,7 @@
     "eslint-plugin-react-refresh": "^0.4.5",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5.2.2",
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
