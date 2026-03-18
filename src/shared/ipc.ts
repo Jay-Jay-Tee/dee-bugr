@@ -15,30 +15,30 @@ export const IPC = {
   PAUSE:            'dap:pause',
 
   // ── ADVANCED FLOW ─────────────────────────────────────────
-  GOTO_LINE:        'dap:gotoLine',      // { source, line }
+  GOTO_LINE:        'dap:gotoLine',
   RETURN_NOW:       'dap:returnNow',     // { frameId, value? }
-  DROP_FRAME:       'dap:dropFrame',     // { frameId }
+  DROP_FRAME:       'dap:dropFrame',
 
   // ── BREAKPOINTS ───────────────────────────────────────────
   SET_BREAKPOINT:   'dap:setBreakpoint', // { file, line, condition?, hitCount?, label?, groupId?, dependsOn? }
-  REMOVE_BREAKPOINT:'dap:removeBreakpoint', // { id }
-  SET_METHOD_BP:    'dap:setMethodBP',   // { name }
-  SET_FIELD_WATCH:  'dap:setFieldWatch', // { variablesReference, name }
+  REMOVE_BREAKPOINT:'dap:removeBreakpoint',
+  SET_METHOD_BP:    'dap:setMethodBP',
+  SET_FIELD_WATCH:  'dap:setFieldWatch',
   SET_EXCEPTION_BP: 'dap:setExceptionBP',// { filters, classFilter? }
-  TOGGLE_GROUP:     'dap:toggleGroup',   // { groupId, enabled }
+  TOGGLE_GROUP:     'dap:toggleGroup',
   SWITCH_FRAME: 'dap:switchFrame',   // { frameId }
   // ── INSPECTION ────────────────────────────────────────────
   GET_STACK:        'dap:stackTrace',
-  GET_SCOPES:       'dap:scopes',        // { frameId }
-  GET_VARIABLES:    'dap:variables',     // { variablesReference }
-  EVALUATE:         'dap:evaluate',      // { expr, frameId, context }
-  SET_VARIABLE:     'dap:setVariable',   // { variablesReference, name, value }
-  DISASSEMBLE:      'dap:disassemble',   // { memoryRef, offset, count }
-  READ_MEMORY:      'dap:readMemory',    // { memoryRef, count }
+  GET_SCOPES:       'dap:scopes',
+  GET_VARIABLES:    'dap:variables',
+  EVALUATE:         'dap:evaluate',
+  SET_VARIABLE:     'dap:setVariable',
+  DISASSEMBLE:      'dap:disassemble',
+  READ_MEMORY:      'dap:readMemory',
 
 
   // ── HISTORY ───────────────────────────────────────────────
-  JUMP_TO_STEP:     'dap:jumpToHistoryStep', // { step }
+  JUMP_TO_STEP:     'dap:jumpToHistoryStep',
 
   // ── AI (P4 registers these) ───────────────────────────────
   AI_EXPLAIN:       'ai:explainBug',
@@ -53,10 +53,10 @@ export const IPC = {
   EVENT_STOPPED:    'debug:stopped',     // DebugState — full snapshot
   EVENT_CONTINUED:  'debug:continued',
   EVENT_TERMINATED: 'debug:terminated',
-  EVENT_OUTPUT:     'debug:output',      // { text, category }
+  EVENT_OUTPUT:     'debug:output',
   EVENT_ANOMALY:    'debug:anomaly',     // Anomaly
   EVENT_RETURN_VAL: 'debug:returnValue', // ReturnValue
-  EVENT_BP_HIT:     'debug:breakpointHit', // { breakpointId }
+  EVENT_BP_HIT:     'debug:breakpointHit',
 } as const;
 
 export type IPCChannel = typeof IPC[keyof typeof IPC];
