@@ -26,7 +26,7 @@ export const IPC = {
   SET_FIELD_WATCH:  'dap:setFieldWatch', // { variablesReference, name }
   SET_EXCEPTION_BP: 'dap:setExceptionBP',// { filters, classFilter? }
   TOGGLE_GROUP:     'dap:toggleGroup',   // { groupId, enabled }
-
+  SWITCH_FRAME: 'dap:switchFrame',   // { frameId }
   // ── INSPECTION ────────────────────────────────────────────
   GET_STACK:        'dap:stackTrace',
   GET_SCOPES:       'dap:scopes',        // { frameId }
@@ -35,6 +35,7 @@ export const IPC = {
   SET_VARIABLE:     'dap:setVariable',   // { variablesReference, name, value }
   DISASSEMBLE:      'dap:disassemble',   // { memoryRef, offset, count }
   READ_MEMORY:      'dap:readMemory',    // { memoryRef, count }
+
 
   // ── HISTORY ───────────────────────────────────────────────
   JUMP_TO_STEP:     'dap:jumpToHistoryStep', // { step }

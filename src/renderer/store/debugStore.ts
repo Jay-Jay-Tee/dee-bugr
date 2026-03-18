@@ -26,7 +26,11 @@ export const useDebugStore = create<DebugStore>((set) => ({
 
 // ── WIRE IPC EVENTS TO STORE ──────────────────────────────
 // Call this once in your App.tsx
+let listenersInitialized = false
+
 export function initIPCListeners() {
+  if (listenersInitialized) return
+  listenersInitialized = true
   const store = useDebugStore.getState()
 
   // Full state update — fires on every breakpoint/step

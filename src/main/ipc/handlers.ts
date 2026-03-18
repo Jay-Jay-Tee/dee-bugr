@@ -74,15 +74,86 @@ export function registerAllHandlers() {
     return { success: true }
   })
 
+  ipcMain.handle(IPC.SWITCH_FRAME, async (_, args: { frameId: number }) => {
+  try {
+    const vars = await session.switchFrame(args.frameId)
+    return vars
+  } catch (err: any) {
+    return { success: false, error: err.message }
+  }
+})
+
   // ── ADVANCED FLOW ─────────────────────────────────────────
 
-  ipcMain.handle(IPC.GOTO_LINE, async (_, args: {
+  ipcMain.handle(IPC.GOTO_LINE, async (_, _args: {
     source: string
     line: number
   }) => {
-    await session.gotoLine(args.source, args.line)
-    return { success: true }
+    // Real implementation Day 5
+    return { success: false, error: 'Not implemented until Day 5' }
   })
+
+  ipcMain.handle(IPC.RETURN_NOW, async (_, _args: {
+    frameId: number
+    value?: string
+  }) => {
+    return { success: false, error: 'Not implemented until Day 5' }
+  })
+
+  ipcMain.handle(IPC.DROP_FRAME, async (_, _args: {
+    frameId: number
+  }) => {
+    return { success: false, error: 'Not implemented until Day 5' }
+  })
+
+  ipcMain.handle(IPC.JUMP_TO_STEP, async (_, _args: {
+    step: number
+  }) => {
+    return { success: false, error: 'Not implemented until Day 5' }
+  })
+
+  // ── BREAKPOINT STUBS (implement Day 6) ────────────────────
+
+  ipcMain.handle(IPC.SET_METHOD_BP, async (_, _args: {
+    name: string
+  }) => {
+    return { success: false, error: 'Not implemented until Day 6' }
+  })
+
+  ipcMain.handle(IPC.SET_FIELD_WATCH, async (_, _args: {
+    variablesReference: number
+    name: string
+  }) => {
+    return { success: false, error: 'Not implemented until Day 6' }
+  })
+
+  ipcMain.handle(IPC.SET_EXCEPTION_BP, async (_, _args: {
+    filters: string[]
+    classFilter?: string
+  }) => {
+    return { success: false, error: 'Not implemented until Day 6' }
+  })
+
+  ipcMain.handle(IPC.TOGGLE_GROUP, async (_, _args: {
+    groupId: string
+    enabled: boolean
+  }) => {
+    return { success: false, error: 'Not implemented until Day 6' }
+  })
+
+  ipcMain.handle(IPC.READ_MEMORY, async (_, args: {
+    memoryReference: string
+    count?: number
+    }) => {
+    return session.readMemory(args.memoryReference, args.count)
+    })
+
+  ipcMain.handle(IPC.DISASSEMBLE, async (_, args: {
+    memoryReference: string
+    count?: number
+    }) => {
+    return session.disassemble(args.memoryReference, args.count)
+    })
 
   // ── AI CONTEXT (P4 uses this) ─────────────────────────────
 

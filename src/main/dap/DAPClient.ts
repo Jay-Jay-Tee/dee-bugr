@@ -262,7 +262,10 @@ export class DAPClient extends EventEmitter {
   }
 
   async variables(variablesReference: number) {
-    return this.request('variables', { variablesReference });
+    return this.request('variables', { 
+      variablesReference,
+      filter: 'named',
+    });
   }
 
   async evaluate(expression: string, frameId: number, context = 'repl') {

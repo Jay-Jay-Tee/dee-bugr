@@ -1,5 +1,5 @@
 // src/main/dap/test-python.ts
-import { DAPClient } from './DAPClient.ts';
+import { DAPClient } from '../dap/DAPClient.ts';
 import { spawn } from 'child_process';
 
 const TARGET = 'C:\\Users\\joshu\\Downloads\\Hackathons\\dee-bugr\\tmp\\test-debug.py';

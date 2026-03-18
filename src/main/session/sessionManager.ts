@@ -16,7 +16,7 @@ import {
 import { ChildProcess } from 'child_process'
 
 export class SessionManager {
-  private client = new DAPClient()
+  private client: DAPClient = new DAPClient()
   private adapterProcess: ChildProcess | null = null
   private threadId = 1
   private frameId = 0
@@ -230,6 +230,8 @@ export class SessionManager {
       const body = await this.client.variables(variablesReference)
       const raw = body?.variables ?? []
 
+      raw.forEach((v: any) => console.log('[memRef]', v.name, v.type, v.memoryReference))
+
       return raw.map((v: any): Variable => ({
         name: v.name,
         value: v.value ?? '',
@@ -292,10 +294,23 @@ export class SessionManager {
   }
 
   async terminate() {
+  try {
     await this.client.terminate()
-    this.adapterProcess?.kill()
-    this.state.status = 'terminated'
+  } catch {
+    // adapter may already be dead
   }
+  this.adapterProcess?.kill()
+  this.adapterProcess = null
+  this.client.disconnect()
+  this.client = new DAPClient()
+  this.wireClientEvents()
+  this.state = { ...INITIAL_DEBUG_STATE }
+  this.state.status = 'terminated'
+  this.threadId = 1
+  this.frameId = 0
+  this.stepCount = 0
+  this.prevVarValues = {}
+}
 
   // ── EVALUATE (REPL) ───────────────────────────────────────
   async evaluate(expression: string): Promise<string> {
@@ -311,6 +326,22 @@ export class SessionManager {
   async setVariable(variablesReference: number, name: string, value: string) {
     return this.client.setVariable(variablesReference, name, value)
   }
+
+  
+  // ── SWITCH STACK FRAME ───────────────────────────────────
+
+  async switchFrame(frameId: number): Promise<Variable[]> {
+    this.frameId = frameId
+    const scopesBody = await this.client.scopes(frameId)
+    const rawScopes = scopesBody?.scopes ?? []
+    const allVars: Variable[] = []
+    for (const scope of rawScopes) {
+        if (scope.expensive) continue
+        const vars = await this.fetchVariables(scope.variablesReference)
+        allVars.push(...vars)
+    }
+    return allVars
+    }
 
   // ── JUMP TO LINE ──────────────────────────────────────────
   async gotoLine(file: string, line: number) {
@@ -333,6 +364,14 @@ export class SessionManager {
       currentFile: this.state.currentFile
     }
   }
+
+  async readMemory(memoryReference: string, count = 256) {
+    return this.client.readMemory(memoryReference, count)
+    }
+
+  async disassemble(memoryReference: string, count = 50) {
+    return this.client.disassemble(memoryReference, count)
+    }
 
   // ── GETTERS ───────────────────────────────────────────────
   getState() { return this.state }
