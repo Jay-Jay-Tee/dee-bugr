@@ -1,35 +1,17 @@
-import { useEffect } from "react";
-import { useDebugStore, initIPCListeners } from "./renderer/store/debugStore";
-import Toolbar from "./components/Toolbar";
-import MainLayout from "./components/MainLayout";
-import BottomPanel from "./components/BottomPanel";
+import { useEffect } from 'react'
+import { initIPCListeners } from './renderer/store/debugStore'
+import Toolbar from './components/panels/Toolbar'
+import MainLayout from './components/panels/MainLayout'
 
-function App() {
-  const currentFile = useDebugStore((s) => s.currentFile);
-  const currentLine = useDebugStore((s) => s.currentLine);
-
+export default function App() {
   useEffect(() => {
-    initIPCListeners();
-
-    const handler = (_: unknown, data: unknown) => {
-      console.log("DAP EVENT:", data);
-    };
-    (globalThis as any).electron?.on?.("dap:event", handler);
-
-    return () => {
-      (globalThis as any).electron?.off?.("dap:event", handler);
-    };
-  }, []);
-
-  console.log("DEBUG STATE:", { currentFile, currentLine });
+    initIPCListeners()
+  }, [])
 
   return (
-    <div className="h-screen flex flex-col">
+    <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1e1e1e]">
       <Toolbar />
       <MainLayout />
-      <BottomPanel />
     </div>
-  );
+  )
 }
-
-export default App;
