@@ -23,6 +23,7 @@ export class SessionManager {
   private stepCount = 0
   private language: Language = 'python'
   private prevVarValues: Record<string, string> = {}
+  private breakpointMap: Map<string, { file: string; line: number; dapId?: number }> = new Map()  // ← ADD THIS
 
   // Full state — gets sent to renderer on every stop
   private state: DebugState = { ...INITIAL_DEBUG_STATE }
@@ -119,7 +120,9 @@ export class SessionManager {
     if (language === 'python') {
       // For python we ATTACH because debugpy is already running
       // (we spawned it with --listen --wait-for-client)
-      await this.client.attach('127.0.0.1', port)
+      this.client.attach('127.0.0.1', port)  // no await — debugpy holds response until configurationDone
+      await this.sleep(200)
+      console.log('[Session] Attach sent')
       console.log('[Session] Attach sent')
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
@@ -223,23 +226,38 @@ export class SessionManager {
   }
 
   // ── FETCH VARIABLES FOR A SCOPE ───────────────────────────
-  async fetchVariables(variablesReference: number): Promise<Variable[]> {
+ // Replace your existing fetchVariables with this recursive version
+  async fetchVariables(variablesReference: number, depth = 0): Promise<Variable[]> {
     if (variablesReference === 0) return []
+    if (depth > 3) return []  // max 3 levels deep — from v1 spec
 
     try {
       const body = await this.client.variables(variablesReference)
       const raw = body?.variables ?? []
 
-      raw.forEach((v: any) => console.log('[memRef]', v.name, v.type, v.memoryReference))
+      const result: Variable[] = []
 
-      return raw.map((v: any): Variable => ({
-        name: v.name,
-        value: v.value ?? '',
-        type: v.type ?? 'unknown',
-        variablesReference: v.variablesReference ?? 0,
-        memoryReference: v.memoryReference,
-        expensive: v.presentationHint?.lazy ?? false
-      }))
+      for (const v of raw) {
+        const variable: Variable = {
+          name: v.name,
+          value: v.value ?? '',
+          type: v.type ?? 'unknown',
+          variablesReference: v.variablesReference ?? 0,
+          memoryReference: v.memoryReference,
+          expensive: v.presentationHint?.lazy ?? false,
+        }
+
+        result.push(variable)
+
+        // If this variable has children (it's an object/array), go deeper
+        // Skip expensive ones — those are things like global scope, registers
+        if (v.variablesReference > 0 && !variable.expensive) {
+          const children = await this.fetchVariables(v.variablesReference, depth + 1)
+          result.push(...children)
+        }
+      }
+
+      return result
     } catch (err) {
       console.error('[Session] fetchVariables failed for ref', variablesReference, err)
       return []
@@ -338,7 +356,7 @@ export class SessionManager {
     for (const scope of rawScopes) {
         if (scope.expensive) continue
         const vars = await this.fetchVariables(scope.variablesReference)
-        allVars.push(...vars)
+        allVars.push(...vars.filter(v => v.name !== 'special variables' && v.name !== 'function variables'))
     }
     return allVars
     }
@@ -390,7 +408,64 @@ export class SessionManager {
     for (const win of windows) {
       win.webContents.send(channel, data)
     }
+
   }
+  async setBreakpoint(
+  file: string,
+  line: number,
+  condition?: string
+): Promise<{ id: string; verified: boolean; dapId?: number }> {
+  const id = `bp-${file}-${line}-${Date.now()}`
+
+  // Collect ALL lines for this file (existing + new)
+  const existingLines = Array.from(this.breakpointMap.values())
+    .filter(bp => bp.file === file)
+    .map(bp => bp.line)
+
+  const allLines = [...existingLines, line]
+
+  // DAP requires you to send ALL breakpoints for a file at once
+  // Sending a new setBreakpoints replaces the previous ones
+  const conditions: Record<number, string> = {}
+  if (condition) conditions[line] = condition
+
+  const result = await this.client.setBreakpoints(file, allLines, conditions)
+  const dapBPs = result?.breakpoints ?? []
+
+  // Find the DAP BP that corresponds to our new line
+  const newDapBP = dapBPs.find((bp: any) => bp.line === line)
+
+  this.breakpointMap.set(id, { file, line, dapId: newDapBP?.id })
+
+  // Update state so renderer knows about it
+  this.state.breakpoints.push({
+    id,
+    dapId: newDapBP?.id,
+    file,
+    line,
+    verified: newDapBP?.verified ?? false,
+    condition,
+  })
+
+  return { id, verified: newDapBP?.verified ?? false, dapId: newDapBP?.id }
+}
+
+async removeBreakpoint(id: string): Promise<void> {
+  const bp = this.breakpointMap.get(id)
+  if (!bp) return
+
+  this.breakpointMap.delete(id)
+
+  // Remove from state
+  this.state.breakpoints = this.state.breakpoints.filter(b => b.id !== id)
+
+  // Re-send all remaining breakpoints for that file to DAP
+  const remainingLines = Array.from(this.breakpointMap.values())
+    .filter(b => b.file === bp.file)
+    .map(b => b.line)
+
+  await this.client.setBreakpoints(bp.file, remainingLines)
+}
 }
 
 // Export a singleton so all IPC handlers share the same session

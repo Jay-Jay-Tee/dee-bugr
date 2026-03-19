@@ -155,6 +155,33 @@ export function registerAllHandlers() {
     return session.disassemble(args.memoryReference, args.count)
     })
 
+  ipcMain.handle(IPC.SET_BREAKPOINT, async (_, args: {
+    file: string
+    line: number
+    condition?: string
+    hitCount?: number
+    label?: string
+    groupId?: string
+    dependsOn?: string
+  }) => {
+    try {
+      const result = await session.setBreakpoint(args.file, args.line, args.condition)
+      return { success: true, ...result }
+    } catch (err: any) {
+      console.error('[IPC] SET_BREAKPOINT failed:', err)
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.REMOVE_BREAKPOINT, async (_, args: { id: string }) => {
+    try {
+      await session.removeBreakpoint(args.id)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   // ── AI CONTEXT (P4 uses this) ─────────────────────────────
 
   ipcMain.handle('dap:getDebugContext', () => {
