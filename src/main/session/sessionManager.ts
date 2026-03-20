@@ -268,14 +268,15 @@ export class SessionManager {
       const body = await this.client.variables(variablesReference)
       const raw: unknown[] = Array.isArray(body?.variables) ? body.variables : []
       return raw.filter(isVariable).map((v): Variable => {
-        const hint = rec((v as DAPRecord)['presentationHint'])
+        const vRecord = v as unknown as DAPRecord
+        const hint = rec(vRecord['presentationHint'])
         return {
-          name:               str((v as DAPRecord)['name']),
-          value:              str((v as DAPRecord)['value']),
-          type:               str((v as DAPRecord)['type'], 'unknown'),
-          variablesReference: num((v as DAPRecord)['variablesReference']),
-          memoryReference:    typeof (v as DAPRecord)['memoryReference'] === 'string'
-                                ? str((v as DAPRecord)['memoryReference'])
+          name:               str(vRecord['name']),
+          value:              str(vRecord['value']),
+          type:               str(vRecord['type'], 'unknown'),
+          variablesReference: num(vRecord['variablesReference']),
+          memoryReference:    typeof vRecord['memoryReference'] === 'string'
+                                ? str(vRecord['memoryReference'])
                                 : undefined,
           expensive:          bool(hint['lazy']),
         }
