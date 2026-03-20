@@ -113,6 +113,42 @@ function VariablesPanel() {
   const liveVars = useDebugStore((s) => s.variables)
   const vars = liveVars.length > 0 ? liveVars : MOCK_VARIABLES
 
+  // Watch expression state
+  const [watchInput, setWatchInput] = useState('')
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false)
+  const [suggestions, setSuggestions] = useState<string[]>([])
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false)
+
+  const handleGenerateWatch = async () => {
+    setSuggestionsLoading(true)
+    setSuggestionsOpen(true)
+    try {
+      if (!globalThis.electronAPI) {
+        console.error('Electron API not available')
+        setSuggestionsLoading(false)
+        return
+      }
+
+      const result = await globalThis.electronAPI.invoke('ai:generateWatch', {}) as any
+      if (result.success && Array.isArray(result.suggestions)) {
+        setSuggestions(result.suggestions)
+      } else {
+        setSuggestions([])
+        console.error('[LeftPanel] AI watch generation failed:', result.error)
+      }
+    } catch (err: any) {
+      console.error('[LeftPanel] handleGenerateWatch failed:', err)
+      setSuggestions([])
+    } finally {
+      setSuggestionsLoading(false)
+    }
+  }
+
+  const selectSuggestion = (suggestion: string) => {
+    setWatchInput(suggestion)
+    setSuggestionsOpen(false)
+  }
+
   return (
     <div className="flex flex-col h-full">
       {/* Column headers */}
@@ -133,13 +169,49 @@ function VariablesPanel() {
         )}
       </div>
 
-      {/* Watch input placeholder */}
+      {/* Watch input with AI suggestions */}
       <div className="border-t border-[#3c3c3c] px-2 py-1.5 shrink-0">
-        <input
-          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#969696] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="Watch expression (Day 4)"
-          disabled
-        />
+        <div className="relative">
+          <div className="flex gap-1">
+            <input
+              value={watchInput}
+              onChange={(e) => setWatchInput(e.target.value)}
+              onFocus={() => {
+                if (suggestions.length > 0) setSuggestionsOpen(true)
+              }}
+              className="flex-1 bg-[#3c3c3c] text-xs text-white placeholder:text-[#969696] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="Watch expression"
+            />
+            <button
+              onClick={handleGenerateWatch}
+              disabled={suggestionsLoading}
+              title="Generate watch expressions with AI"
+              className={[
+                'px-2 py-1 text-xs rounded font-medium transition-colors',
+                suggestionsLoading
+                  ? 'bg-[#3c3c3c] text-[#888] cursor-not-allowed'
+                  : 'bg-blue-600 text-white hover:bg-blue-700',
+              ].join(' ')}
+            >
+              {suggestionsLoading ? '⏳' : '✨'}
+            </button>
+          </div>
+
+          {/* Suggestions dropdown */}
+          {suggestionsOpen && suggestions.length > 0 && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg z-10">
+              {suggestions.map((suggestion, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => selectSuggestion(suggestion)}
+                  className="w-full text-left px-2 py-1 text-xs text-[#e0e0e0] hover:bg-[#3c3c3c] transition-colors"
+                >
+                  {suggestion}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

@@ -188,5 +188,73 @@ export function registerAllHandlers() {
     return session.getDebugContext()
   })
 
+  // ── AI EXPLANATION HANDLERS (P4) ──────────────────────────
+
+  ipcMain.handle(IPC.AI_EXPLAIN, async () => {
+    try {
+      const { explainBug } = require('../ai/groq')
+      const explanation = await explainBug()
+      return { success: true, explanation }
+    } catch (err: any) {
+      console.error('[IPC] AI_EXPLAIN failed:', err.message)
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_FIX, async () => {
+    try {
+      const { suggestFix } = require('../ai/groq')
+      const fix = await suggestFix()
+      return { success: true, fix }
+    } catch (err: any) {
+      console.error('[IPC] AI_FIX failed:', err.message)
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_EXPLAIN_VAR, async (_, args: { varName: string }) => {
+    try {
+      const { explainVariable } = require('../ai/groq')
+      const explanation = await explainVariable(args.varName)
+      return { success: true, explanation }
+    } catch (err: any) {
+      console.error('[IPC] AI_EXPLAIN_VAR failed:', err.message)
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_WATCHPOINT, async () => {
+    try {
+      const { generateWatch } = require('../ai/groq')
+      const suggestions = await generateWatch()
+      return { success: true, suggestions }
+    } catch (err: any) {
+      console.error('[IPC] AI_WATCHPOINT failed:', err.message)
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_SUGGEST_BPS, async (_, args: { sourceCode: string; language: Language }) => {
+    try {
+      const { suggestBreakpoints } = require('../ai/groq')
+      const suggestions = await suggestBreakpoints(args.sourceCode, args.language)
+      return { success: true, suggestions }
+    } catch (err: any) {
+      console.error('[IPC] AI_SUGGEST_BPS failed:', err.message)
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_NARRATIVE, async () => {
+    try {
+      const { sessionNarrative } = require('../ai/groq')
+      const narrative = await sessionNarrative()
+      return { success: true, narrative }
+    } catch (err: any) {
+      console.error('[IPC] AI_NARRATIVE failed:', err.message)
+      return { success: false, error: err.message }
+    }
+  })
+
   console.log('[IPC] All handlers registered')
 }
