@@ -1,26 +1,44 @@
-// src/components/LeftPanel.tsx
-// ─────────────────────────────────────────────────────────────────────────────
-// Left panel: Variables tab + Call Stack tab.
-// Reads from Zustand (mock data today, live data from Day 3).
-// ─────────────────────────────────────────────────────────────────────────────
+// src/components/panels/LeftPanel.tsx
 
-import { useState } from 'react'
+import { useState, useCallback } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
-import { MOCK_VARIABLES, MOCK_STACK_FRAMES, MOCK_THREADS, MOCK_CHILDREN_MAP } from '../../renderer/mockData'
+import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
+import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
+
+// ── IPC helper (mirrors Toolbar — no globalThis in components) ────────────────
+
+function invoke(channel: typeof IPC[keyof typeof IPC], args?: unknown) {
+  return globalThis.electronAPI?.invoke(channel, args)
+    .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
+}
+
+// ── Type guard for Variable array returned from IPC ───────────────────────────
+
+function isVariableArray(value: unknown): value is Variable[] {
+  if (!Array.isArray(value)) return false
+  return value.every(
+    (v) =>
+      typeof v === 'object' &&
+      v !== null &&
+      typeof (v as Record<string, unknown>)['name'] === 'string' &&
+      typeof (v as Record<string, unknown>)['value'] === 'string'
+  )
+}
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
 type Tab = 'variables' | 'callstack'
 
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'variables', label: 'Variables' },
+  { id: 'callstack', label: 'Call Stack' },
+]
+
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
-  const tabs: { id: Tab; label: string }[] = [
-    { id: 'variables', label: 'Variables' },
-    { id: 'callstack', label: 'Call Stack' },
-  ]
   return (
     <div className="flex border-b border-[#3c3c3c] shrink-0">
-      {tabs.map((t) => (
+      {TABS.map((t) => (
         <button
           key={t.id}
           onClick={() => onChange(t.id)}
@@ -42,101 +60,88 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
 
 function typeColor(type: string): string {
   if (/^(int|short|long|uint|size_t|unsigned)/.test(type)) return 'text-[#b5cea8]'
-  if (/^(float|double)/.test(type)) return 'text-[#dcdcaa]'
-  if (/^(bool)/.test(type)) return 'text-[#569cd6]'
-  if (/^(char \*|std::string|string)/.test(type)) return 'text-[#ce9178]'
-  if (/\*/.test(type)) return 'text-[#c586c0]' // pointer
-  return 'text-[#9cdcfe]' // object / struct
+  if (/^(float|double)/.test(type))                        return 'text-[#dcdcaa]'
+  if (/^(bool)/.test(type))                                return 'text-[#569cd6]'
+  if (/^(char \*|std::string|string)/.test(type))          return 'text-[#ce9178]'
+  if (/\*/.test(type))                                     return 'text-[#c586c0]'
+  return 'text-[#9cdcfe]'
 }
 
-function VariableRow({
-  variable,
-  depth = 0,
-}: {
+interface VariableRowProps {
   variable: Variable
   depth?: number
-}) {
-  const [expanded, setExpanded] = useState(false)
-  const hasChildren = variable.variablesReference > 0
-  const children = MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
+}
 
-  const isNull =
-    variable.value === '0x0000000000000000' || variable.value === 'nullptr'
+function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
+  const [expanded,     setExpanded]     = useState(false)
+  const [liveChildren, setLiveChildren] = useState<Variable[] | null>(null)
+
+  const hasChildren = variable.variablesReference > 0
+  const children    = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
+  const isNull      = variable.value === '0x0000000000000000' || variable.value === 'nullptr'
+
+  const handleExpand = useCallback(async () => {
+    if (!hasChildren) return
+    if (!expanded && liveChildren === null) {
+      const result = await invoke(IPC.GET_VARIABLES, { variablesReference: variable.variablesReference })
+      if (isVariableArray(result)) setLiveChildren(result)
+    }
+    setExpanded((e) => !e)
+  }, [hasChildren, expanded, liveChildren, variable.variablesReference])
 
   return (
     <>
       <div
         className={[
-          'flex items-start gap-1 px-2 py-0.5 hover:bg-[#2a2d2e] cursor-default text-xs font-mono',
+          'flex items-start gap-1 py-0.5 hover:bg-[#2a2d2e] cursor-default text-xs font-mono',
           isNull ? 'bg-red-950/20' : '',
         ].join(' ')}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
-        onClick={() => hasChildren && setExpanded((e) => !e)}
+        onClick={handleExpand}
       >
-        {/* Expand arrow */}
         <span className="w-3 shrink-0 text-[#969696]">
           {hasChildren ? (expanded ? '▾' : '▸') : ' '}
         </span>
-
-        {/* Name */}
-        <span className="text-[#9cdcfe] w-28 shrink-0 truncate">
-          {variable.name}
-        </span>
-
-        {/* Value */}
-        <span
-          className={[
-            'flex-1 truncate',
-            isNull ? 'text-red-400 font-medium' : typeColor(variable.type),
-          ].join(' ')}
-        >
+        <span className="text-[#9cdcfe] w-28 shrink-0 truncate">{variable.name}</span>
+        <span className={['flex-1 truncate', isNull ? 'text-red-400 font-medium' : typeColor(variable.type)].join(' ')}>
           {variable.value}
         </span>
-
-        {/* Type */}
-        <span className="text-[#4ec9b0] w-28 shrink-0 truncate text-right">
+        <span className="text-[#4ec9b0] w-28 shrink-0 truncate text-right pr-2">
           {variable.type}
         </span>
       </div>
 
-      {/* Children */}
-      {expanded &&
-        children.map((child) => (
-          <VariableRow key={child.name} variable={child} depth={depth + 1} />
-        ))}
+      {expanded && children.map((child) => (
+        <VariableRow key={child.name} variable={child} depth={depth + 1} />
+      ))}
     </>
   )
 }
 
 function VariablesPanel() {
-  // Day 3: swap MOCK_VARIABLES for useDebugStore(s => s.variables)
-  const liveVars = useDebugStore((s) => s.variables)
-  const vars = liveVars.length > 0 ? liveVars : MOCK_VARIABLES
+  const vars   = useDebugStore((s) => s.variables)
+  const status = useDebugStore((s) => s.status)
 
   return (
     <div className="flex flex-col h-full">
-      {/* Column headers */}
       <div className="flex gap-1 px-2 py-1 text-[10px] uppercase tracking-wide text-[#969696] border-b border-[#3c3c3c] shrink-0">
         <span className="w-3 shrink-0" />
         <span className="w-28 shrink-0">Name</span>
         <span className="flex-1">Value</span>
-        <span className="w-28 shrink-0 text-right">Type</span>
+        <span className="w-28 shrink-0 text-right pr-2">Type</span>
       </div>
-
       <div className="flex-1 overflow-y-auto">
         {vars.length === 0 ? (
-          <div className="p-3 text-xs text-[#969696]">
-            No variables — run a debug session
+          <div className="p-3 text-xs text-[#555]">
+            {status === 'idle' ? 'Launch a debug session to see variables' : 'No variables in scope'}
           </div>
         ) : (
           vars.map((v) => <VariableRow key={v.name} variable={v} />)
         )}
       </div>
-
-      {/* Watch input placeholder */}
       <div className="border-t border-[#3c3c3c] px-2 py-1.5 shrink-0">
         <input
-          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#969696] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
+          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
           placeholder="Watch expression (Day 4)"
           disabled
         />
@@ -147,56 +152,52 @@ function VariablesPanel() {
 
 // ── Call stack panel ──────────────────────────────────────────────────────────
 
+function shortFile(filePath: string): string {
+  return filePath.split('/').slice(-2).join('/')
+}
+
 function CallStackPanel() {
+  const frames  = useDebugStore((s) => s.stackFrames)
+  const threads = useDebugStore((s) => s.threads)
+  const status  = useDebugStore((s) => s.status)
   const [activeFrame, setActiveFrame] = useState(0)
-  // Day 3: swap MOCK_STACK_FRAMES for useDebugStore(s => s.stackFrames)
-  const liveFrames = useDebugStore((s) => s.stackFrames)
-  const frames: StackFrame[] = liveFrames.length > 0 ? liveFrames : MOCK_STACK_FRAMES
 
-  // Day 3: swap for useDebugStore(s => s.threads)
-  const liveThreads = useDebugStore((s) => s.threads)
-  const threads = liveThreads.length > 0 ? liveThreads : MOCK_THREADS
-
-  function shortFile(path: string) {
-    const parts = path.split('/')
-    return parts.slice(-2).join('/')
-  }
+  const handleFrameClick = useCallback((frame: StackFrame) => {
+    setActiveFrame(frame.id)
+    invoke(IPC.SWITCH_FRAME, { frameId: frame.id })
+  }, [])
 
   return (
     <div className="flex flex-col h-full">
-      {/* Thread selector */}
       <div className="px-2 py-1.5 border-b border-[#3c3c3c] shrink-0">
         <select className="w-full bg-[#3c3c3c] text-xs text-white px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500">
-          {threads.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.name} — {t.status}
-            </option>
-          ))}
+          {threads.length === 0 ? (
+            <option>No threads</option>
+          ) : (
+            threads.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} — {t.status}</option>
+            ))
+          )}
         </select>
       </div>
-
       <div className="flex-1 overflow-y-auto">
         {frames.length === 0 ? (
-          <div className="p-3 text-xs text-[#969696]">
-            Call stack appears when paused
+          <div className="p-3 text-xs text-[#555]">
+            {status === 'idle' ? 'Launch a debug session to see call stack' : 'Call stack appears when paused'}
           </div>
         ) : (
           frames.map((frame) => (
             <div
               key={frame.id}
-              onClick={() => setActiveFrame(frame.id)}
+              onClick={() => handleFrameClick(frame)}
               className={[
                 'px-3 py-2 cursor-pointer hover:bg-[#2a2d2e] border-b border-[#2d2d2d]',
                 activeFrame === frame.id ? 'bg-[#094771]' : '',
               ].join(' ')}
             >
               <div className="flex items-center gap-2">
-                <span className="text-[#969696] text-[10px] w-4 shrink-0">
-                  #{frame.id}
-                </span>
-                <span className="text-[#dcdcaa] text-xs font-mono truncate">
-                  {frame.name}
-                </span>
+                <span className="text-[#969696] text-[10px] w-4 shrink-0">#{frame.id}</span>
+                <span className="text-[#dcdcaa] text-xs font-mono truncate">{frame.name}</span>
               </div>
               <div className="text-[#969696] text-[10px] font-mono mt-0.5 ml-6 truncate">
                 {shortFile(frame.file)}:{frame.line}
@@ -213,7 +214,6 @@ function CallStackPanel() {
 
 export default function LeftPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('variables')
-
   return (
     <div className="h-full flex flex-col bg-[#1e1e1e] border-r border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />

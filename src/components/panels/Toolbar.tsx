@@ -1,8 +1,18 @@
 // src/components/panels/Toolbar.tsx
+// Day 3: step buttons and launch/stop now invoke real IPC channels.
 
 import { useCallback } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
+import { IPC } from '../../shared/ipc'
+import type { IPCChannel } from '../../shared/ipc'
 import type { Language } from '../../shared/types'
+
+// ── IPC helper ────────────────────────────────────────────────────────────────
+
+function invoke(channel: IPCChannel, args?: unknown) {
+  return globalThis.electronAPI?.invoke(channel, args)
+    .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
+}
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -73,7 +83,6 @@ const LANGUAGES: { value: Language; label: string }[] = [
 function LanguageSelector() {
   const language    = useDebugStore((s) => s.language)
   const setLanguage = useDebugStore((s) => s.setLanguage)
-
   return (
     <select
       value={language}
@@ -92,7 +101,6 @@ function LanguageSelector() {
 function ModeToggle() {
   const isBeginnerMode     = useDebugStore((s) => s.isBeginnerMode)
   const toggleBeginnerMode = useDebugStore((s) => s.toggleBeginnerMode)
-
   return (
     <div className="flex items-center gap-2 text-xs text-[#969696]">
       <span className={isBeginnerMode ? 'text-white' : ''}>Beginner</span>
@@ -116,7 +124,7 @@ const STATUS_DOT: Record<string, string> = {
   paused:    'bg-yellow-400',
 }
 
-function StatusIndicator({ status }: {readonly status: string }) {
+function StatusIndicator({ status }: { readonly status: string }) {
   return (
     <div className="flex items-center gap-1.5 text-xs text-[#969696]">
       <div className={`w-2 h-2 rounded-full ${STATUS_DOT[status] ?? 'bg-[#3c3c3c]'}`} />
@@ -127,18 +135,14 @@ function StatusIndicator({ status }: {readonly status: string }) {
 
 // ── Launch / Stop ─────────────────────────────────────────────────────────────
 
-function LaunchStopBtn({
-  isActive,
-  onLaunch,
-  onStop,
-}: {
+function LaunchStopBtn({ isActive, onLaunch, onStop }: {
   isActive: boolean
   onLaunch: () => void
   onStop: () => void
 }) {
   return isActive
-    ? <ToolbarBtn title="Stop (Shift+F5)"       onClick={onStop}   variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
-    : <ToolbarBtn title="Launch debugger (F5)"  onClick={onLaunch} variant="accent"><PlayIcon /><span>Run</span></ToolbarBtn>
+    ? <ToolbarBtn title="Stop (Shift+F5)"      onClick={onStop}   variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
+    : <ToolbarBtn title="Launch debugger (F5)" onClick={onLaunch} variant="accent"><PlayIcon /><span>Run</span></ToolbarBtn>
 }
 
 // ── Step controls ─────────────────────────────────────────────────────────────
@@ -180,26 +184,40 @@ function AIButtons() {
 
 export default function Toolbar() {
   const status    = useDebugStore((s) => s.status)
+  const language  = useDebugStore((s) => s.language)
+  const currentFile = useDebugStore((s) => s.currentFile)
   const isRunning = status === 'running' || status === 'launching'
   const isPaused  = status === 'paused'
 
-  // Day 3: replace each stub body with window.electronAPI.invoke(IPC.X)
-  const noop       = useCallback(() => {}, [])
+  const handleLaunch   = useCallback(() => {
+    // Passes current language + open file. In full implementation a file-picker
+    // dialog would be shown here. For now target = currentFile or a prompt.
+    const target = currentFile || prompt('Path to script to debug:') || ''
+    if (!target) return
+    invoke(IPC.LAUNCH, { language, target })
+  }, [language, currentFile])
+
+  const handleStop     = useCallback(() => invoke(IPC.TERMINATE), [])
+  const handleContinue = useCallback(() => invoke(IPC.CONTINUE), [])
+  const handlePause    = useCallback(() => invoke(IPC.PAUSE), [])
+  const handleNext     = useCallback(() => invoke(IPC.NEXT), [])
+  const handleStepIn   = useCallback(() => invoke(IPC.STEP_IN), [])
+  const handleStepOut  = useCallback(() => invoke(IPC.STEP_OUT), [])
 
   return (
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
       <LanguageSelector />
       <Divider />
-      <LaunchStopBtn isActive={isRunning || isPaused} onLaunch={noop} onStop={noop} />
+      <LaunchStopBtn isActive={isRunning || isPaused} onLaunch={handleLaunch} onStop={handleStop} />
       <Divider />
       <StepControls
         isPaused={isPaused}
         isRunning={isRunning}
-        onContinue={noop}
-        onPause={noop}
-        onNext={noop}
-        onStepIn={noop}
-        onStepOut={noop}
+        onContinue={handleContinue}
+        onPause={handlePause}
+        onNext={handleNext}
+        onStepIn={handleStepIn}
+        onStepOut={handleStepOut}
       />
       <Divider />
       <AIButtons />

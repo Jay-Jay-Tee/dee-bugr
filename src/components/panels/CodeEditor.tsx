@@ -1,10 +1,4 @@
 // src/components/panels/CodeEditor.tsx
-// ─────────────────────────────────────────────────────────────────────────────
-// Monaco editor with breakpoint gutter, execution cursor, and language sync.
-//
-// Day 3 migration note: replace MOCK_SOURCE_LINES with real file content
-// from store.sourceLines once P1 delivers it via the stopped event.
-// ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
@@ -38,47 +32,89 @@ const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
   automaticLayout: true,
 }
 
+// ── Overlay helpers ───────────────────────────────────────────────────────────
+
+const MAX_VALUE_LEN = 24
+const MAX_VARS      = 6
+
+function truncate(s: string): string {
+  return s.length > MAX_VALUE_LEN ? s.slice(0, MAX_VALUE_LEN) + '…' : s
+}
+
+function buildOverlayText(vars: { name: string; value: string }[]): string {
+  return vars
+    .slice(0, MAX_VARS)
+    .map((v) => `${v.name} = ${truncate(v.value)}`)
+    .join('   ')
+}
+
+// Derives a map of line → last known variable snapshot for the current file,
+// excluding the current execution line (which gets its own live overlay).
+function buildHistoryOverlays(
+  executionHistory: { file: string; line: number; variables: Record<string, { value: string; changed: boolean }> }[],
+  currentFile: string,
+  currentLine: number,
+): Map<number, { text: string; hasChanged: boolean }> {
+  // Walk history in order so later entries overwrite earlier ones —
+  // each line shows the most recent values from the last time it was visited.
+  const result = new Map<number, { text: string; hasChanged: boolean }>()
+
+  for (const entry of executionHistory) {
+    if (entry.file !== currentFile) continue
+    if (entry.line === currentLine) continue
+
+    const vars = Object.entries(entry.variables)
+    if (vars.length === 0) continue
+
+    const text       = buildOverlayText(vars.map(([name, v]) => ({ name, value: v.value })))
+    const hasChanged = vars.some(([, v]) => v.changed)
+    result.set(entry.line, { text, hasChanged })
+  }
+
+  return result
+}
+
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CodeEditor() {
-  const language         = useDebugStore((s) => s.language)
-  const currentLine      = useDebugStore((s) => s.currentLine)
-  const currentFile      = useDebugStore((s) => s.currentFile)
-  const breakpoints      = useDebugStore((s) => s.breakpoints)
+  const language          = useDebugStore((s) => s.language)
+  const currentLine       = useDebugStore((s) => s.currentLine)
+  const currentFile       = useDebugStore((s) => s.currentFile)
+  const sourceLines       = useDebugStore((s) => s.sourceLines)
+  const breakpoints       = useDebugStore((s) => s.breakpoints)
+  const variables         = useDebugStore((s) => s.variables)
+  const executionHistory  = useDebugStore((s) => s.executionHistory)
 
-  // Read toggleBreakpoint from the store directly inside the handler
-  // to avoid stale closure — store actions are stable references in Zustand.
   const storeRef = useRef(useDebugStore.getState)
 
-  const editorRef          = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
-  const monacoRef          = useRef<typeof Monaco | null>(null)
-  const bpCollectionRef    = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
-  const cursorCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const editorRef              = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
+  const monacoRef              = useRef<typeof Monaco | null>(null)
+  const bpCollectionRef        = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const cursorCollectionRef    = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const overlayCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const historyCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
-  // ── Mount: create decoration collections + wire gutter click ─────────────
-  // useCallback prevents handleMount from being a new reference on every render,
-  // which would cause MonacoEditor to remount the editor unnecessarily.
+  // ── Mount ─────────────────────────────────────────────────────────────────
   const handleMount: OnMount = useCallback((editor, monaco) => {
-    editorRef.current  = editor
-    monacoRef.current  = monaco
-    bpCollectionRef.current     = editor.createDecorationsCollection([])
-    cursorCollectionRef.current = editor.createDecorationsCollection([])
+    editorRef.current            = editor
+    monacoRef.current            = monaco
+    bpCollectionRef.current      = editor.createDecorationsCollection([])
+    cursorCollectionRef.current  = editor.createDecorationsCollection([])
+    overlayCollectionRef.current = editor.createDecorationsCollection([])
+    historyCollectionRef.current = editor.createDecorationsCollection([])
 
     editor.onMouseDown((e) => {
       const isGutter =
         e.target.type === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS ||
         e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
-
       if (!isGutter || !e.target.position) return
-
       const line = e.target.position.lineNumber
-      // Read from store at call time — avoids stale closure on currentFile
       const { currentFile: file, toggleBreakpoint } = storeRef.current()
       toggleBreakpoint(file || MOCK_DEBUG_STATE.currentFile, line)
     })
-  }, []) // no deps — storeRef.current() always returns fresh state
+  }, [])
 
-  // ── Sync breakpoint decorations ───────────────────────────────────────────
+  // ── Breakpoint decorations ────────────────────────────────────────────────
   useEffect(() => {
     const monaco = monacoRef.current
     const col    = bpCollectionRef.current
@@ -88,25 +124,23 @@ export default function CodeEditor() {
     const modelFile = file || MOCK_DEBUG_STATE.currentFile
     const relevant  = breakpoints.filter((bp) => bp.file === modelFile)
 
-    col.set(
-      relevant.map((bp) => ({
-        range: new monaco.Range(bp.line, 1, bp.line, 1),
-        options: {
-          isWholeLine: false,
-          glyphMarginClassName: 'lucid-bp-glyph',
-          glyphMarginHoverMessage: {
-            value: bp.condition ? `Condition: ${bp.condition}` : 'Breakpoint',
-          },
-          overviewRuler: {
-            color: '#e51400',
-            position: monaco.editor.OverviewRulerLane.Left,
-          },
+    col.set(relevant.map((bp) => ({
+      range: new monaco.Range(bp.line, 1, bp.line, 1),
+      options: {
+        isWholeLine: false,
+        glyphMarginClassName: 'lucid-bp-glyph',
+        glyphMarginHoverMessage: {
+          value: bp.condition ? `Condition: ${bp.condition}` : 'Breakpoint',
         },
-      }))
-    )
+        overviewRuler: {
+          color: '#e51400',
+          position: monaco.editor.OverviewRulerLane.Left,
+        },
+      },
+    })))
   }, [breakpoints, currentFile])
 
-  // ── Sync execution cursor ─────────────────────────────────────────────────
+  // ── Execution cursor ──────────────────────────────────────────────────────
   useEffect(() => {
     const editor = editorRef.current
     const monaco = monacoRef.current
@@ -131,10 +165,65 @@ export default function CodeEditor() {
       },
     }])
 
-    editor.revealLineInCenterIfOutsideViewport(currentLine, 1 /* smooth */)
+    editor.revealLineInCenterIfOutsideViewport(currentLine, 1)
   }, [currentLine])
 
-  // ── Sync Monaco language ──────────────────────────────────────────────────
+  // ── Current-line inline overlay ───────────────────────────────────────────
+  useEffect(() => {
+    const monaco = monacoRef.current
+    const col    = overlayCollectionRef.current
+    if (!monaco || !col) return
+
+    if (!currentLine || variables.length === 0) {
+      col.set([])
+      return
+    }
+
+    col.set([{
+      range: new monaco.Range(currentLine, Number.MAX_SAFE_INTEGER, currentLine, Number.MAX_SAFE_INTEGER),
+      options: {
+        after: {
+          content: `  ${buildOverlayText(variables)}`,
+          inlineClassName: 'lucid-inline-overlay',
+        },
+      },
+    }])
+  }, [variables, currentLine])
+
+  // ── History overlays (past lines) ─────────────────────────────────────────
+  // Shows the last known variable values on every previously visited line,
+  // dimmer than the current overlay. Lines where a value changed get a
+  // separate CSS class so they can be styled distinctly.
+  useEffect(() => {
+    const monaco = monacoRef.current
+    const col    = historyCollectionRef.current
+    if (!monaco || !col) return
+
+    if (executionHistory.length === 0) {
+      col.set([])
+      return
+    }
+
+    const { currentFile: file } = storeRef.current()
+    const modelFile = file || MOCK_DEBUG_STATE.currentFile
+    const historyMap = buildHistoryOverlays(executionHistory, modelFile, currentLine)
+
+    col.set(
+      [...historyMap.entries()].map(([line, { text, hasChanged }]) => ({
+        range: new monaco.Range(line, Number.MAX_SAFE_INTEGER, line, Number.MAX_SAFE_INTEGER),
+        options: {
+          after: {
+            content: `  ${text}`,
+            inlineClassName: hasChanged
+              ? 'lucid-history-overlay lucid-history-changed'
+              : 'lucid-history-overlay',
+          },
+        },
+      }))
+    )
+  }, [executionHistory, currentLine, currentFile])
+
+  // ── Language sync ─────────────────────────────────────────────────────────
   useEffect(() => {
     const editor = editorRef.current
     const monaco = monacoRef.current
@@ -144,8 +233,7 @@ export default function CodeEditor() {
     monaco.editor.setModelLanguage(model, MONACO_LANG[language] ?? 'plaintext')
   }, [language])
 
-  // Day 3: replace MOCK_SOURCE_LINES with store.sourceLines?.join('\n')
-  const sourceContent = MOCK_SOURCE_LINES
+  const sourceContent = sourceLines?.join('\n') ?? MOCK_SOURCE_LINES
 
   return (
     <MonacoEditor

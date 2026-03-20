@@ -97,3 +97,29 @@ button:focus-visible {
   margin-top: 6px;
   margin-left: 3px;
 }
+
+/* ── CodeEditor: current-line inline overlay ─────────────────────────────── */
+.lucid-inline-overlay {
+  color: #6a9955;
+  font-style: italic;
+  font-size: 12px;
+  opacity: 0.85;
+  pointer-events: none;
+  white-space: pre;
+}
+
+/* ── CodeEditor: history overlays (past lines) ───────────────────────────── */
+.lucid-history-overlay {
+  color: #4a6a4a;
+  font-style: italic;
+  font-size: 12px;
+  opacity: 0.5;
+  pointer-events: none;
+  white-space: pre;
+}
+
+/* Lines where at least one value changed get a warmer tint */
+.lucid-history-changed {
+  color: #8a7040;
+  opacity: 0.6;
+}
