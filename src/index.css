@@ -68,3 +68,32 @@ button:focus-visible {
   background: #264f78;
   color: inherit;
 }
+
+/* ── CodeEditor: breakpoint glyph ────────────────────────────────────────── */
+.lucid-bp-glyph {
+  background: #e51400;
+  border-radius: 50%;
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: 3px;
+  margin-left: 3px;
+}
+
+/* ── CodeEditor: execution cursor line ───────────────────────────────────── */
+.lucid-exec-line {
+  background: rgba(255, 204, 0, 0.15) !important;
+  border-left: 3px solid #ffcc00 !important;
+}
+
+/* ── CodeEditor: execution arrow glyph ───────────────────────────────────── */
+.lucid-exec-arrow::before {
+  content: '';
+  display: block;
+  width: 0;
+  height: 0;
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 9px solid #ffcc00;
+  margin-top: 6px;
+  margin-left: 3px;
+}

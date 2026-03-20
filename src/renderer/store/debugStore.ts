@@ -2,60 +2,76 @@ import { create } from 'zustand'
 import { DebugState, INITIAL_DEBUG_STATE } from '../../shared/types'
 import { IPC } from '../../shared/ipc'
 
-interface DebugStore extends DebugState {
-  setState: (state: DebugState) => void
-  setStatus: (status: DebugState['status']) => void
-  appendOutput: (text: string, category: string) => void
-  outputLog: { text: string; category: string }[]
+// ── Store interface ───────────────────────────────────────────────────────────
+// Extends DebugState (P1-owned) with UI-only fields that never travel over IPC.
+// isBeginnerMode is added here so all panels can read it from Day 3 onward.
 
-  toggleBreakpoint: (file: string, line: number) => Promise<void>
-
+interface OutputLine {
+  text: string
+  category: string
 }
 
+interface DebugStore extends DebugState {
+  outputLog: OutputLine[]
+  isBeginnerMode: boolean
 
-export const useDebugStore = create<DebugStore>((set) => ({
+  setState: (state: DebugState) => void
+  setStatus: (status: DebugState['status']) => void
+  setLanguage: (language: DebugState['language']) => void
+  appendOutput: (text: string, category: string) => void
+  toggleBeginnerMode: () => void
+  toggleBreakpoint: (file: string, line: number) => Promise<void>
+}
+
+export const useDebugStore = create<DebugStore>((set, get) => ({
   ...INITIAL_DEBUG_STATE,
   outputLog: [],
+  isBeginnerMode: false,
 
   setState: (newState) =>
-    set((prev) => ({
-      ...prev,
-      ...newState,
-    })),
+    set((prev) => ({ ...prev, ...newState })),
 
   setStatus: (status) => set({ status }),
 
-  appendOutput: (text, category) =>
-    set((prev) => ({
-      outputLog: [...prev.outputLog, { text, category }]
-    })),
+  setLanguage: (language) => set({ language }),
 
-    toggleBreakpoint: async (file, line) => {
-  try {
-    await globalThis.electronAPI.invoke(
-      IPC.SET_BREAKPOINT,
-      { file, line }
+  appendOutput: (text, category) =>
+    set((prev) => ({ outputLog: [...prev.outputLog, { text, category }] })),
+
+  toggleBeginnerMode: () =>
+    set((prev) => ({ isBeginnerMode: !prev.isBeginnerMode })),
+
+  toggleBreakpoint: async (file, line) => {
+    const existing = get().breakpoints.find(
+      (bp) => bp.file === file && bp.line === line
     )
-  } catch (error) {
-    console.error('Failed to toggle breakpoint', error)
-  }
-}
+    try {
+      const channel = existing ? IPC.REMOVE_BREAKPOINT : IPC.SET_BREAKPOINT
+      await globalThis.electronAPI.invoke(channel, { file, line })
+    } catch (error) {
+      console.error('Failed to toggle breakpoint', error)
+    }
+  },
 }))
+
+// ── IPC listeners ─────────────────────────────────────────────────────────────
 
 let listenersInitialized = false
 const unsubscribers: Array<() => void> = []
 
 function isDebugState(value: unknown): value is DebugState {
-  return typeof value === 'object' && value !== null && 'status' in value
-}
-
-function isOutputData(value: unknown): value is { text: string; category: string } {
   return (
     typeof value === 'object' &&
     value !== null &&
-    typeof (value as any).text === 'string' &&
-    typeof (value as any).category === 'string'
+    'status' in value &&
+    'currentLine' in value
   )
+}
+
+function isOutputLine(value: unknown): value is OutputLine {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v['text'] === 'string' && typeof v['category'] === 'string'
 }
 
 export function initIPCListeners() {
@@ -66,34 +82,36 @@ export function initIPCListeners() {
     console.error('electronAPI not available — preload failed to load')
     return
   }
+
   try {
-    const unsubscribe1 = globalThis.electronAPI.on(IPC.EVENT_STOPPED, (state: unknown) => {
-      if (isDebugState(state)) {
-        useDebugStore.getState().setState(state)
-      } else {
-        console.warn('Invalid state received in EVENT_STOPPED', state)
-      }
-    })
-    unsubscribers.push(unsubscribe1)
-
-    const unsubscribe2 = globalThis.electronAPI.on(IPC.EVENT_CONTINUED, () => {
-      useDebugStore.getState().setStatus('running')
-    })
-    unsubscribers.push(unsubscribe2)
-
-    const unsubscribe3 = globalThis.electronAPI.on(IPC.EVENT_TERMINATED, () => {
-      useDebugStore.getState().setStatus('terminated')
-    })
-    unsubscribers.push(unsubscribe3)
-
-    const unsubscribe4 = globalThis.electronAPI.on(IPC.EVENT_OUTPUT, (data: unknown) => {
-      if (isOutputData(data)) {
-        useDebugStore.getState().appendOutput(data.text, data.category)
-      } else {
-        console.warn('Invalid data received in EVENT_OUTPUT', data)
-      }
-    })
-    unsubscribers.push(unsubscribe4)
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_STOPPED, (state: unknown) => {
+        if (isDebugState(state)) {
+          useDebugStore.getState().setState(state)
+        } else {
+          console.warn('Invalid state in EVENT_STOPPED', state)
+        }
+      })
+    )
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_CONTINUED, () => {
+        useDebugStore.getState().setStatus('running')
+      })
+    )
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_TERMINATED, () => {
+        useDebugStore.getState().setStatus('terminated')
+      })
+    )
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_OUTPUT, (data: unknown) => {
+        if (isOutputLine(data)) {
+          useDebugStore.getState().appendOutput(data.text, data.category)
+        } else {
+          console.warn('Invalid data in EVENT_OUTPUT', data)
+        }
+      })
+    )
   } catch (error) {
     console.error('Failed to initialize IPC listeners:', error)
     listenersInitialized = false
@@ -101,11 +119,11 @@ export function initIPCListeners() {
 }
 
 export function cleanupIPCListeners() {
-  unsubscribers.forEach((unsubscribe) => {
+  unsubscribers.forEach((unsub) => {
     try {
-      unsubscribe()
-    } catch (error) {
-      console.error('Error unsubscribing from IPC listener:', error)
+      unsub()
+    } catch (e) {
+      console.error('Unsubscribe error', e)
     }
   })
   unsubscribers.length = 0
