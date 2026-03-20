@@ -34,9 +34,8 @@ function createWindow() {
   }
 }
 
-app.whenReady().then(() => {
-  // Handlers MUST be registered before the window is created,
-  // otherwise any invoke fired during initial render finds no handler.
+app.whenReady().then(async () => {
+  const { registerAllHandlers } = await import('../src/main/ipc/handlers')
   registerAllHandlers()
   createWindow()
 })
