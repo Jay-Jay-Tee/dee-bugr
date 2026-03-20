@@ -7,6 +7,7 @@
 // provides the live handlers. Disabled state clearly communicates this.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import React from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import type { Language } from '../../shared/types'
 
@@ -251,10 +252,49 @@ function StepControls({
 // ── AI buttons ────────────────────────────────────────────────────────────────
 
 function AIButtons() {
+  const [explainLoading, setExplainLoading] = React.useState(false)
+  const [fixLoading, setFixLoading] = React.useState(false)
+
+  const handleExplain = async () => {
+    setExplainLoading(true)
+    try {
+      if (!globalThis.electronAPI) {
+        console.error('Electron API not available')
+        return
+      }
+      await globalThis.electronAPI.invoke('ai:explainBug', {})
+      // RightPanel will auto-update via event listener
+    } catch (err: any) {
+      console.error('[Toolbar] Explain failed:', err)
+    } finally {
+      setExplainLoading(false)
+    }
+  }
+
+  const handleFix = async () => {
+    setFixLoading(true)
+    try {
+      if (!globalThis.electronAPI) {
+        console.error('Electron API not available')
+        return
+      }
+      await globalThis.electronAPI.invoke('ai:suggestFix', {})
+      // RightPanel will auto-update via event listener
+    } catch (err: any) {
+      console.error('[Toolbar] Fix failed:', err)
+    } finally {
+      setFixLoading(false)
+    }
+  }
+
   return (
     <>
-      <ToolbarBtn title="Explain Bug (AI)" disabled variant="accent"><span>⚡ Explain</span></ToolbarBtn>
-      <ToolbarBtn title="Suggest Fix (AI)" disabled variant="accent"><span>🔧 Fix</span></ToolbarBtn>
+      <ToolbarBtn title="Explain Bug (AI)" onClick={handleExplain} disabled={explainLoading} variant="accent">
+        <span>{explainLoading ? '⏳' : '⚡'} Explain</span>
+      </ToolbarBtn>
+      <ToolbarBtn title="Suggest Fix (AI)" onClick={handleFix} disabled={fixLoading} variant="accent">
+        <span>{fixLoading ? '⏳' : '🔧'} Fix</span>
+      </ToolbarBtn>
     </>
   )
 }
