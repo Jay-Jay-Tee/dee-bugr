@@ -5,15 +5,16 @@ import { useDebugStore } from '../../renderer/store/debugStore'
 import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
 import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
+import BreakpointPanel from './BreakpointPanel'
 
-// ── IPC helper (mirrors Toolbar — no globalThis in components) ────────────────
+// ── IPC helper ────────────────────────────────────────────────────────────────
 
 function invoke(channel: typeof IPC[keyof typeof IPC], args?: unknown) {
   return globalThis.electronAPI?.invoke(channel, args)
     .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 
-// ── Type guard for Variable array returned from IPC ───────────────────────────
+// ── Type guard ────────────────────────────────────────────────────────────────
 
 function isVariableArray(value: unknown): value is Variable[] {
   if (!Array.isArray(value)) return false
@@ -28,11 +29,12 @@ function isVariableArray(value: unknown): value is Variable[] {
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-type Tab = 'variables' | 'callstack'
+type Tab = 'variables' | 'callstack' | 'breakpoints'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'variables', label: 'Variables' },
-  { id: 'callstack', label: 'Call Stack' },
+  { id: 'variables',   label: 'Variables' },
+  { id: 'callstack',   label: 'Call Stack' },
+  { id: 'breakpoints', label: 'Breakpoints' },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -43,7 +45,7 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
           key={t.id}
           onClick={() => onChange(t.id)}
           className={[
-            'px-3 py-1.5 text-xs uppercase tracking-wide transition-colors',
+            'flex-1 px-2 py-1.5 text-[10px] uppercase tracking-wide transition-colors',
             active === t.id
               ? 'text-white border-b-2 border-blue-500 -mb-px'
               : 'text-[#969696] hover:text-white',
@@ -110,7 +112,6 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
           {variable.type}
         </span>
       </div>
-
       {expanded && children.map((child) => (
         <VariableRow key={child.name} variable={child} depth={depth + 1} />
       ))}
@@ -214,11 +215,14 @@ function CallStackPanel() {
 
 export default function LeftPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('variables')
+
   return (
     <div className="h-full flex flex-col bg-[#1e1e1e] border-r border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'variables' ? <VariablesPanel /> : <CallStackPanel />}
+        {activeTab === 'variables'   && <VariablesPanel />}
+        {activeTab === 'callstack'   && <CallStackPanel />}
+        {activeTab === 'breakpoints' && <BreakpointPanel />}
       </div>
     </div>
   )

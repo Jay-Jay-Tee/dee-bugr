@@ -1,10 +1,7 @@
 import { create } from 'zustand'
-import { DebugState, INITIAL_DEBUG_STATE } from '../../shared/types'
+import { DebugState, INITIAL_DEBUG_STATE, Breakpoint } from '../../shared/types'
 import { IPC } from '../../shared/ipc'
-
-// ── Store interface ───────────────────────────────────────────────────────────
-// Extends DebugState (P1-owned) with UI-only fields that never travel over IPC.
-// isBeginnerMode is added here so all panels can read it from Day 3 onward.
+import type { IPCChannel } from '../../shared/ipc'
 
 interface OutputLine {
   text: string
@@ -21,6 +18,12 @@ interface DebugStore extends DebugState {
   appendOutput: (text: string, category: string) => void
   toggleBeginnerMode: () => void
   toggleBreakpoint: (file: string, line: number) => Promise<void>
+  updateBreakpoint: (id: string, patch: Partial<Breakpoint>) => Promise<void>
+  removeBreakpointById: (id: string) => Promise<void>
+}
+
+function invoke(channel: IPCChannel, args?: unknown): Promise<unknown> {
+  return globalThis.electronAPI.invoke(channel, args)
 }
 
 export const useDebugStore = create<DebugStore>((set, get) => ({
@@ -45,11 +48,71 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
     const existing = get().breakpoints.find(
       (bp) => bp.file === file && bp.line === line
     )
+
+    if (existing) {
+      // Optimistic remove
+      set((prev) => ({
+        breakpoints: prev.breakpoints.filter((bp) => bp.id !== existing.id),
+      }))
+      try {
+        await invoke(IPC.REMOVE_BREAKPOINT, { file, line })
+      } catch (err) {
+        // Rollback on failure
+        set((prev) => ({ breakpoints: [...prev.breakpoints, existing] }))
+        console.error('Failed to remove breakpoint', err)
+      }
+    } else {
+      // Optimistic add — unverified until main side confirms
+      const optimistic: Breakpoint = {
+        id:       `bp-${file}-${line}`,
+        file,
+        line,
+        verified: false,
+      }
+      set((prev) => ({ breakpoints: [...prev.breakpoints, optimistic] }))
+      try {
+        await invoke(IPC.SET_BREAKPOINT, { file, line })
+      } catch (err) {
+        // Rollback on failure
+        set((prev) => ({
+          breakpoints: prev.breakpoints.filter((bp) => bp.id !== optimistic.id),
+        }))
+        console.error('Failed to set breakpoint', err)
+      }
+    }
+  },
+
+  updateBreakpoint: async (id, patch) => {
+    set((prev) => ({
+      breakpoints: prev.breakpoints.map((bp) =>
+        bp.id === id ? { ...bp, ...patch } : bp
+      ),
+    }))
+    const bp = get().breakpoints.find((b) => b.id === id)
+    if (!bp) return
     try {
-      const channel = existing ? IPC.REMOVE_BREAKPOINT : IPC.SET_BREAKPOINT
-      await globalThis.electronAPI.invoke(channel, { file, line })
-    } catch (error) {
-      console.error('Failed to toggle breakpoint', error)
+      await invoke(IPC.SET_BREAKPOINT, {
+        file:      bp.file,
+        line:      bp.line,
+        condition: bp.condition,
+        hitCount:  bp.hitCountRemaining,
+        label:     bp.label,
+        groupId:   bp.groupId,
+        dependsOn: bp.dependsOn,
+      })
+    } catch (err) {
+      console.error('Failed to update breakpoint', err)
+    }
+  },
+
+  removeBreakpointById: async (id) => {
+    const bp = get().breakpoints.find((b) => b.id === id)
+    if (!bp) return
+    set((prev) => ({ breakpoints: prev.breakpoints.filter((b) => b.id !== id) }))
+    try {
+      await invoke(IPC.REMOVE_BREAKPOINT, { file: bp.file, line: bp.line })
+    } catch (err) {
+      console.error('Failed to remove breakpoint', err)
     }
   },
 }))
@@ -120,11 +183,7 @@ export function initIPCListeners() {
 
 export function cleanupIPCListeners() {
   unsubscribers.forEach((unsub) => {
-    try {
-      unsub()
-    } catch (e) {
-      console.error('Unsubscribe error', e)
-    }
+    try { unsub() } catch (e) { console.error('Unsubscribe error', e) }
   })
   unsubscribers.length = 0
   listenersInitialized = false
