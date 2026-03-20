@@ -1,39 +1,27 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { IPCChannel } from '../shared/ipc'
 
-// Everything exposed here appears as window.electronAPI in React
+// Exposes window.electronAPI to the renderer process.
+// contextIsolation: true — no direct Node.js access from React.
+// NOTE: electron/main.ts loads the BUILT output (preload.mjs), compiled
+// from this file by vite-plugin-electron. No changes needed in main.ts.
+
 contextBridge.exposeInMainWorld('electronAPI', {
 
-  // ── INVOKE (request → response) ───────────────────────────
-  // Renderer calls these like: await window.electronAPI.invoke(IPC.NEXT)
-  invoke: (channel: string, args?: any) => {
-    return ipcRenderer.invoke(channel, args)
-  },
+  invoke: (channel: IPCChannel, args?: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(channel, args),
 
-  // ── ON (listen for events pushed from main) ───────────────
-  // Renderer calls: window.electronAPI.on(IPC.EVENT_STOPPED, cb)
-  on: (channel: string, callback: (data: any) => void) => {
-    const handler = (_event: any, data: any) => callback(data)
+  on: (channel: IPCChannel, callback: (data: unknown) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
     ipcRenderer.on(channel, handler)
-
-    // Return a cleanup function so React can call it in useEffect cleanup
-    return () => {
-      ipcRenderer.removeListener(channel, handler)
-    }
+    return () => ipcRenderer.removeListener(channel, handler)
   },
 
-  // ── REMOVE LISTENER ───────────────────────────────────────
-  off: (channel: string) => {
-    ipcRenderer.removeAllListeners(channel)
-  }
-})
+  once: (channel: IPCChannel, callback: (data: unknown) => void): void => {
+    ipcRenderer.once(channel, (_event, data) => callback(data))
+  },
 
-// Type declaration so TypeScript knows about window.electronAPI
-declare global {
-  interface Window {
-    electronAPI: {
-      invoke: (channel: string, args?: any) => Promise<any>
-      on: (channel: string, callback: (data: any) => void) => () => void
-      off: (channel: string) => void
-    }
-  }
-}
+  off: (channel: IPCChannel): void => {
+    ipcRenderer.removeAllListeners(channel)
+  },
+})

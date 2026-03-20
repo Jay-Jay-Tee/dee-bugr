@@ -4,6 +4,7 @@ import { DAPClient } from '../dap/DAPClient'
 import { launchPythonAdapter } from '../dap/adapters/python'
 import { launchJSAdapter } from '../dap/adapters/javascript'
 import { IPC } from '../../shared/ipc'
+import type { IPCChannel } from '../../shared/ipc'
 import {
   DebugState,
   INITIAL_DEBUG_STATE,
@@ -11,9 +12,40 @@ import {
   Variable,
   Scope,
   HistoryEntry,
-  Language
+  Language,
+  Breakpoint,
 } from '../../shared/types'
 import { ChildProcess } from 'child_process'
+
+// ── DAP response shape helpers ────────────────────────────────────────────────
+// DAPClient.request() returns Promise<any> — we extract fields safely here
+// rather than scattering casts throughout the session logic.
+
+type DAPRecord = Record<string, unknown>
+
+function str(v: unknown, fallback = ''): string {
+  return typeof v === 'string' ? v : fallback
+}
+
+function num(v: unknown, fallback = 0): number {
+  return typeof v === 'number' ? v : fallback
+}
+
+function bool(v: unknown, fallback = false): boolean {
+  return typeof v === 'boolean' ? v : fallback
+}
+
+function rec(v: unknown): DAPRecord {
+  return (typeof v === 'object' && v !== null) ? v as DAPRecord : {}
+}
+
+function isVariable(v: unknown): v is Variable {
+  if (typeof v !== 'object' || v === null) return false
+  const r = v as DAPRecord
+  return typeof r['name'] === 'string' && typeof r['value'] === 'string'
+}
+
+// ── SessionManager ────────────────────────────────────────────────────────────
 
 export class SessionManager {
   private client: DAPClient = new DAPClient()
@@ -23,33 +55,29 @@ export class SessionManager {
   private stepCount = 0
   private language: Language = 'python'
   private prevVarValues: Record<string, string> = {}
-  private breakpointMap: Map<string, { file: string; line: number; dapId?: number }> = new Map()  // ← ADD THIS
-
-  // Full state — gets sent to renderer on every stop
+  private bpMap: Map<string, Set<number>> = new Map()
   private state: DebugState = { ...INITIAL_DEBUG_STATE }
 
   constructor() {
     this.wireClientEvents()
   }
 
-  // ── WIRE ALL DAP EVENTS ───────────────────────────────────
+  // ── Wire DAP events ───────────────────────────────────────
+
   private wireClientEvents() {
-    this.client.on('event:stopped', this.handleStopped.bind(this))
-    this.client.on('event:continued', this.handleContinued.bind(this))
-    this.client.on('event:output', this.handleOutput.bind(this))
+    this.client.on('event:stopped',    this.handleStopped.bind(this))
+    this.client.on('event:continued',  this.handleContinued.bind(this))
+    this.client.on('event:output',     this.handleOutput.bind(this))
     this.client.on('event:terminated', this.handleTerminated.bind(this))
-    this.client.on('event:exited', this.handleExited.bind(this))
+    this.client.on('event:exited',     this.handleExited.bind(this))
   }
 
-  private async handleStopped(body: any) {
-    console.log('[Session] Stopped:', body.reason, '| thread:', body.threadId)
-
-    this.threadId = body.threadId ?? 1
+  private async handleStopped(body: DAPRecord) {
+    console.log('[Session] Stopped:', body['reason'], '| thread:', body['threadId'])
+    this.threadId = num(body['threadId'], 1)
     this.state.status = 'paused'
-    this.state.errorMessage = body.reason === 'exception'
-      ? body.text
-      : undefined
-
+    this.state.errorMessage =
+      body['reason'] === 'exception' ? str(body['text']) || undefined : undefined
     await this.refreshFullState()
     this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
   }
@@ -59,10 +87,10 @@ export class SessionManager {
     this.pushToRenderer(IPC.EVENT_CONTINUED, null)
   }
 
-  private handleOutput(body: any) {
+  private handleOutput(body: DAPRecord) {
     this.pushToRenderer(IPC.EVENT_OUTPUT, {
-      text: body.output,
-      category: body.category ?? 'stdout'
+      text: str(body['output']),
+      category: str(body['category'], 'stdout'),
     })
   }
 
@@ -73,24 +101,21 @@ export class SessionManager {
     this.adapterProcess?.kill()
   }
 
-  private handleExited(body: any) {
-    console.log('[Session] Exited with code', body.exitCode)
+  private handleExited(body: DAPRecord) {
+    console.log('[Session] Exited with code', body['exitCode'])
   }
 
-  // ── MAIN LAUNCH FUNCTION ──────────────────────────────────
-  async launch(
-    language: Language,
-    scriptPath: string,
-    breakpointLines: number[] = []
-  ) {
+  // ── Launch ────────────────────────────────────────────────
+
+  async launch(language: Language, scriptPath: string, breakpointLines: number[] = []) {
     this.language = language
     this.stepCount = 0
     this.prevVarValues = {}
+    this.bpMap = new Map()
     this.state = { ...INITIAL_DEBUG_STATE, language, status: 'launching' }
 
     console.log(`[Session] Launching ${language} → ${scriptPath}`)
 
-    // ── STEP 1: Start the adapter process ────────────────────
     let port: number
     if (language === 'python') {
       const adapter = await launchPythonAdapter(scriptPath)
@@ -104,64 +129,88 @@ export class SessionManager {
       throw new Error(`Language not yet supported: ${language}`)
     }
 
-    // ── STEP 2: Wait 1 second for adapter to be ready ────────
     await this.sleep(1000)
-
-    // ── STEP 3: Connect DAPClient TCP socket ─────────────────
     await this.client.connect('127.0.0.1', port)
     console.log('[Session] DAPClient connected')
 
-    // ── STEP 4: Initialize ────────────────────────────────────
     const initBody = await this.client.initialize()
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
-    // ── STEP 5: Launch or Attach ──────────────────────────────
     if (language === 'python') {
-      // For python we ATTACH because debugpy is already running
-      // (we spawned it with --listen --wait-for-client)
-      this.client.attach('127.0.0.1', port)  // no await — debugpy holds response until configurationDone
-      await this.sleep(200)
-      console.log('[Session] Attach sent')
-      console.log('[Session] Attach sent')
+      await this.client.attach('127.0.0.1', port)
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
-      console.log('[Session] Launch sent')
     }
 
-    // ── STEP 6: Set breakpoints ───────────────────────────────
     if (breakpointLines.length > 0) {
-      const bpBody = await this.client.setBreakpoints(scriptPath, breakpointLines)
-      console.log('[Session] Breakpoints set:', bpBody?.breakpoints)
+      await this.client.setBreakpoints(scriptPath, breakpointLines)
+      this.bpMap.set(scriptPath, new Set(breakpointLines))
     }
 
-    // ── STEP 7: Configuration done ────────────────────────────
-    // This tells the adapter: "we are done configuring, start running"
     await this.client.configurationDone()
-    console.log('[Session] ConfigurationDone sent — program is now running')
-
+    console.log('[Session] ConfigurationDone sent — program running')
     this.state.status = 'running'
-
-    // From here the adapter runs the program.
-    // When it hits a breakpoint it fires a 'stopped' event.
-    // wireClientEvents() handles that above.
   }
 
-  // ── FETCH FULL STATE AFTER EVERY STOP ────────────────────
+  // ── Breakpoint management ─────────────────────────────────
+  // DAP setBreakpoints is a full replacement per file, never incremental.
+
+  async setBreakpoint(file: string, line: number, condition?: string) {
+    const lines = this.bpMap.get(file) ?? new Set<number>()
+    lines.add(line)
+    this.bpMap.set(file, lines)
+
+    const conditions: Record<number, string> = condition ? { [line]: condition } : {}
+    const body = await this.client.setBreakpoints(file, [...lines], conditions)
+    const dapBps: DAPRecord[] = Array.isArray(body?.breakpoints) ? body.breakpoints : []
+
+    const updated: Breakpoint[] = [...lines].map((l, i) => {
+      const dap = rec(dapBps[i])
+      const existing = this.state.breakpoints.find((b) => b.file === file && b.line === l)
+      return {
+        id:        existing?.id ?? `bp-${file}-${l}`,
+        dapId:     typeof dap['id'] === 'number' ? dap['id'] : undefined,
+        file,
+        line:      l,
+        verified:  bool(dap['verified']),
+        condition: condition && l === line ? condition : existing?.condition,
+      }
+    })
+
+    this.state.breakpoints = [
+      ...updated,
+      ...this.state.breakpoints.filter((b) => b.file !== file),
+    ]
+  }
+
+  async removeBreakpoint(file: string, line: number) {
+    const lines = this.bpMap.get(file) ?? new Set<number>()
+    lines.delete(line)
+    this.bpMap.set(file, lines)
+    await this.client.setBreakpoints(file, [...lines])
+    this.state.breakpoints = this.state.breakpoints.filter(
+      (b) => !(b.file === file && b.line === line)
+    )
+  }
+
+  // ── Refresh full state after every stop ───────────────────
+
   private async refreshFullState() {
     try {
-      // 1. Get call stack
       const stackBody = await this.client.stackTrace(this.threadId)
-      const rawFrames = stackBody?.stackFrames ?? []
+      const rawFrames: DAPRecord[] = Array.isArray(stackBody?.stackFrames) ? stackBody.stackFrames : []
 
-      const frames: StackFrame[] = rawFrames.map((f: any) => ({
-        id: f.id,
-        name: f.name,
-        file: f.source?.path ?? f.source?.name ?? '',
-        line: f.line,
-        column: f.column,
-        variableCount: 0  // filled in below
-      }))
-
+      const frames: StackFrame[] = rawFrames.map((f) => {
+        const src = rec(f['source'])
+        return {
+          id:            num(f['id']),
+          name:          str(f['name']),
+          file:          str(src['path']) || str(src['name']),
+          line:          num(f['line']),
+          column:        num(f['column']),
+          variableCount: 0,
+        }
+      })
       this.state.stackFrames = frames
 
       if (frames.length > 0) {
@@ -170,53 +219,40 @@ export class SessionManager {
         this.state.currentLine = frames[0].line
       }
 
-      // 2. Get scopes for top frame
       const scopesBody = await this.client.scopes(this.frameId)
-      const rawScopes = scopesBody?.scopes ?? []
+      const rawScopes: DAPRecord[] = Array.isArray(scopesBody?.scopes) ? scopesBody.scopes : []
 
-      const scopes: Scope[] = rawScopes.map((s: any) => ({
-        name: s.name,
-        variablesReference: s.variablesReference,
-        expensive: s.expensive ?? false
+      const scopes: Scope[] = rawScopes.map((s) => ({
+        name:               str(s['name']),
+        variablesReference: num(s['variablesReference']),
+        expensive:          bool(s['expensive']),
       }))
       this.state.scopes = scopes
 
-      // 3. Get variables from all non-expensive scopes
       const allVars: Variable[] = []
       for (const scope of scopes) {
-        if (scope.expensive) continue  // skip registers, globals for now
-        const vars = await this.fetchVariables(scope.variablesReference)
-        allVars.push(...vars)
+        if (scope.expensive) continue
+        allVars.push(...await this.fetchVariables(scope.variablesReference))
       }
-
-      // Update frame variable counts
-      if (frames.length > 0) {
-        frames[0].variableCount = allVars.length
-      }
-
+      if (frames.length > 0) frames[0].variableCount = allVars.length
       this.state.variables = allVars
 
-      // 4. Get threads
       const threadsBody = await this.client.threads()
-      this.state.threads = (threadsBody?.threads ?? []).map((t: any) => ({
-        id: t.id,
-        name: t.name,
-        status: t.id === this.threadId ? 'stopped' : 'running'
+      const rawThreads: DAPRecord[] = Array.isArray(threadsBody?.threads) ? threadsBody.threads : []
+      this.state.threads = rawThreads.map((t) => ({
+        id:     num(t['id']),
+        name:   str(t['name']),
+        status: num(t['id']) === this.threadId ? 'stopped' : 'running',
       }))
 
-      // 5. Read source file
       try {
-        const source = fs.readFileSync(this.state.currentFile, 'utf8')
-        this.state.sourceLines = source.split('\n')
+        this.state.sourceLines = fs.readFileSync(this.state.currentFile, 'utf8').split('\n')
       } catch {
-        // file might not be accessible
+        // file may not be accessible — renderer keeps last known content
       }
 
-      // 6. Record history entry
       this.stepCount++
       this.recordHistoryEntry(allVars)
-
-      // 7. Update step count
       this.state.stepCount = this.stepCount
 
     } catch (err) {
@@ -224,248 +260,154 @@ export class SessionManager {
     }
   }
 
-  // ── FETCH VARIABLES FOR A SCOPE ───────────────────────────
- // Replace your existing fetchVariables with this recursive version
-  async fetchVariables(variablesReference: number, depth = 0): Promise<Variable[]> {
-    if (variablesReference === 0) return []
-    if (depth > 3) return []  // max 3 levels deep — from v1 spec
+  // ── Fetch variables ───────────────────────────────────────
 
+  async fetchVariables(variablesReference: number): Promise<Variable[]> {
+    if (variablesReference === 0) return []
     try {
       const body = await this.client.variables(variablesReference)
-      const raw = body?.variables ?? []
-
-      const result: Variable[] = []
-
-      for (const v of raw) {
-        const variable: Variable = {
-          name: v.name,
-          value: v.value ?? '',
-          type: v.type ?? 'unknown',
-          variablesReference: v.variablesReference ?? 0,
-          memoryReference: v.memoryReference,
-          expensive: v.presentationHint?.lazy ?? false,
+      const raw: unknown[] = Array.isArray(body?.variables) ? body.variables : []
+      return raw.filter(isVariable).map((v): Variable => {
+        const hint = rec((v as DAPRecord)['presentationHint'])
+        return {
+          name:               str((v as DAPRecord)['name']),
+          value:              str((v as DAPRecord)['value']),
+          type:               str((v as DAPRecord)['type'], 'unknown'),
+          variablesReference: num((v as DAPRecord)['variablesReference']),
+          memoryReference:    typeof (v as DAPRecord)['memoryReference'] === 'string'
+                                ? str((v as DAPRecord)['memoryReference'])
+                                : undefined,
+          expensive:          bool(hint['lazy']),
         }
-
-        result.push(variable)
-
-        // If this variable has children (it's an object/array), go deeper
-        // Skip expensive ones — those are things like global scope, registers
-        if (v.variablesReference > 0 && !variable.expensive) {
-          const children = await this.fetchVariables(v.variablesReference, depth + 1)
-          result.push(...children)
-        }
-      }
-
-      return result
+      })
     } catch (err) {
       console.error('[Session] fetchVariables failed for ref', variablesReference, err)
       return []
     }
   }
 
-  // ── RECORD HISTORY ENTRY ──────────────────────────────────
-  // Called after every stop so P3 can build the timeline chart
+  // ── History ───────────────────────────────────────────────
+
   private recordHistoryEntry(vars: Variable[]) {
     const varSnapshot: HistoryEntry['variables'] = {}
-
     for (const v of vars) {
-      const changed = this.prevVarValues[v.name] !== v.value
       varSnapshot[v.name] = {
-        value: v.value,
-        type: v.type,
-        changed
+        value:   v.value,
+        type:    v.type,
+        changed: this.prevVarValues[v.name] !== v.value,
       }
       this.prevVarValues[v.name] = v.value
     }
-
-    const entry: HistoryEntry = {
-      step: this.stepCount,
-      file: this.state.currentFile,
-      line: this.state.currentLine,
+    this.state.executionHistory.push({
+      step:      this.stepCount,
+      file:      this.state.currentFile,
+      line:      this.state.currentLine,
       variables: varSnapshot,
-      timestamp: Date.now()
-    }
-
-    this.state.executionHistory.push(entry)
+      timestamp: Date.now(),
+    })
   }
 
-  // ── STEP COMMANDS (called by IPC handlers) ────────────────
-  async stepOver() {
-    this.state.status = 'running'
-    await this.client.next(this.threadId)
-  }
+  // ── Step commands ─────────────────────────────────────────
 
-  async stepIn() {
-    this.state.status = 'running'
-    await this.client.stepIn(this.threadId)
-  }
+  async stepOver()          { this.state.status = 'running'; await this.client.next(this.threadId) }
+  async stepIn()            { this.state.status = 'running'; await this.client.stepIn(this.threadId) }
+  async stepOut()           { this.state.status = 'running'; await this.client.stepOut(this.threadId) }
+  async continueExecution() { this.state.status = 'running'; await this.client.continue(this.threadId) }
 
-  async stepOut() {
-    this.state.status = 'running'
-    await this.client.stepOut(this.threadId)
-  }
-
-  async continueExecution() {
-    this.state.status = 'running'
-    await this.client.continue(this.threadId)
+  async pause() {
+    // DAPClient.request() is public — no cast needed.
+    // Returns Promise<any> because DAP responses are untyped at the library level.
+    await this.client.request('pause', { threadId: this.threadId })
   }
 
   async terminate() {
-  try {
-    await this.client.terminate()
-  } catch {
-    // adapter may already be dead
+    try { await this.client.terminate() } catch { /* adapter may already be dead */ }
+    this.adapterProcess?.kill()
+    this.adapterProcess = null
+    this.client.disconnect()
+    this.client = new DAPClient()
+    this.wireClientEvents()
+    this.state         = { ...INITIAL_DEBUG_STATE }
+    this.state.status  = 'terminated'
+    this.threadId      = 1
+    this.frameId       = 0
+    this.stepCount     = 0
+    this.prevVarValues = {}
+    this.bpMap         = new Map()
   }
-  this.adapterProcess?.kill()
-  this.adapterProcess = null
-  this.client.disconnect()
-  this.client = new DAPClient()
-  this.wireClientEvents()
-  this.state = { ...INITIAL_DEBUG_STATE }
-  this.state.status = 'terminated'
-  this.threadId = 1
-  this.frameId = 0
-  this.stepCount = 0
-  this.prevVarValues = {}
-}
 
-  // ── EVALUATE (REPL) ───────────────────────────────────────
+  // ── Evaluate / set variable ───────────────────────────────
+
   async evaluate(expression: string): Promise<string> {
     try {
       const body = await this.client.evaluate(expression, this.frameId)
-      return body?.result ?? ''
-    } catch (err: any) {
-      return `Error: ${err.message}`
+      // body is any (DAPClient returns Promise<any>) — coerce safely
+      return body != null && typeof body['result'] === 'string'
+        ? body['result']
+        : String(body?.['result'] ?? '')
+    } catch (err: unknown) {
+      return `Error: ${err instanceof Error ? err.message : String(err)}`
     }
   }
 
-  // ── SET VARIABLE VALUE ────────────────────────────────────
   async setVariable(variablesReference: number, name: string, value: string) {
     return this.client.setVariable(variablesReference, name, value)
   }
 
-  
-  // ── SWITCH STACK FRAME ───────────────────────────────────
-
   async switchFrame(frameId: number): Promise<Variable[]> {
     this.frameId = frameId
     const scopesBody = await this.client.scopes(frameId)
-    const rawScopes = scopesBody?.scopes ?? []
+    const rawScopes: DAPRecord[] = Array.isArray(scopesBody?.scopes) ? scopesBody.scopes : []
     const allVars: Variable[] = []
     for (const scope of rawScopes) {
-        if (scope.expensive) continue
-        const vars = await this.fetchVariables(scope.variablesReference)
-        allVars.push(...vars.filter(v => v.name !== 'special variables' && v.name !== 'function variables'))
+      if (bool(scope['expensive'])) continue
+      allVars.push(...await this.fetchVariables(num(scope['variablesReference'])))
     }
     return allVars
-    }
-
-  // ── JUMP TO LINE ──────────────────────────────────────────
-  async gotoLine(file: string, line: number) {
-    const targetsBody = await this.client.gotoTargets(file, line)
-    const targets = targetsBody?.targets ?? []
-    if (targets.length > 0) {
-      await this.client.goto(targets[0].id, this.threadId)
-    }
   }
 
-  // ── GET CONTEXT FOR AI (P4 calls this) ───────────────────
-  getDebugContext() {
-    return {
-      language: this.language,
-      errorMessage: this.state.errorMessage,
-      stackFrames: this.state.stackFrames,
-      variables: this.state.variables,
-      sourceLines: this.state.sourceLines ?? [],
-      currentLine: this.state.currentLine,
-      currentFile: this.state.currentFile
-    }
-  }
+  // ── Memory / disassembly ──────────────────────────────────
 
   async readMemory(memoryReference: string, count = 256) {
     return this.client.readMemory(memoryReference, count)
-    }
+  }
 
   async disassemble(memoryReference: string, count = 50) {
     return this.client.disassemble(memoryReference, count)
-    }
+  }
 
-  // ── GETTERS ───────────────────────────────────────────────
-  getState() { return this.state }
-  getClient() { return this.client }
-  getCurrentFrameId() { return this.frameId }
+  // ── AI context (P4) ───────────────────────────────────────
+
+  getDebugContext() {
+    return {
+      language:     this.language,
+      errorMessage: this.state.errorMessage,
+      stackFrames:  this.state.stackFrames,
+      variables:    this.state.variables,
+      sourceLines:  this.state.sourceLines ?? [],
+      currentLine:  this.state.currentLine,
+      currentFile:  this.state.currentFile,
+    }
+  }
+
+  // ── Getters ───────────────────────────────────────────────
+
+  getState()           { return this.state }
+  getClient()          { return this.client }
+  getCurrentFrameId()  { return this.frameId }
   getCurrentThreadId() { return this.threadId }
 
-  // ── HELPERS ───────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────
+
   private sleep(ms: number) {
-    return new Promise(resolve => setTimeout(resolve, ms))
+    return new Promise<void>((resolve) => setTimeout(resolve, ms))
   }
 
-  // Push an event to the renderer process
-  private pushToRenderer(channel: string, data: any) {
-    const windows = BrowserWindow.getAllWindows()
-    for (const win of windows) {
+  private pushToRenderer(channel: IPCChannel, data: unknown) {
+    for (const win of BrowserWindow.getAllWindows()) {
       win.webContents.send(channel, data)
     }
-
   }
-  async setBreakpoint(
-  file: string,
-  line: number,
-  condition?: string
-): Promise<{ id: string; verified: boolean; dapId?: number }> {
-  const id = `bp-${file}-${line}-${Date.now()}`
-
-  // Collect ALL lines for this file (existing + new)
-  const existingLines = Array.from(this.breakpointMap.values())
-    .filter(bp => bp.file === file)
-    .map(bp => bp.line)
-
-  const allLines = [...existingLines, line]
-
-  // DAP requires you to send ALL breakpoints for a file at once
-  // Sending a new setBreakpoints replaces the previous ones
-  const conditions: Record<number, string> = {}
-  if (condition) conditions[line] = condition
-
-  const result = await this.client.setBreakpoints(file, allLines, conditions)
-  const dapBPs = result?.breakpoints ?? []
-
-  // Find the DAP BP that corresponds to our new line
-  const newDapBP = dapBPs.find((bp: any) => bp.line === line)
-
-  this.breakpointMap.set(id, { file, line, dapId: newDapBP?.id })
-
-  // Update state so renderer knows about it
-  this.state.breakpoints.push({
-    id,
-    dapId: newDapBP?.id,
-    file,
-    line,
-    verified: newDapBP?.verified ?? false,
-    condition,
-  })
-
-  return { id, verified: newDapBP?.verified ?? false, dapId: newDapBP?.id }
 }
 
-async removeBreakpoint(id: string): Promise<void> {
-  const bp = this.breakpointMap.get(id)
-  if (!bp) return
-
-  this.breakpointMap.delete(id)
-
-  // Remove from state
-  this.state.breakpoints = this.state.breakpoints.filter(b => b.id !== id)
-
-  // Re-send all remaining breakpoints for that file to DAP
-  const remainingLines = Array.from(this.breakpointMap.values())
-    .filter(b => b.file === bp.file)
-    .map(b => b.line)
-
-  await this.client.setBreakpoints(bp.file, remainingLines)
-}
-}
-
-// Export a singleton so all IPC handlers share the same session
 export const session = new SessionManager()

@@ -1,24 +1,26 @@
-import { ipcRenderer, contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import type { IPCChannel } from '../src/shared/ipc'
 
-// --------- Expose some API to the Renderer process ---------
-contextBridge.exposeInMainWorld('ipcRenderer', {
-  on(...args: Parameters<typeof ipcRenderer.on>) {
-    const [channel, listener] = args
-    return ipcRenderer.on(channel, (event, ...args) => listener(event, ...args))
-  },
-  off(...args: Parameters<typeof ipcRenderer.off>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.off(channel, ...omit)
-  },
-  send(...args: Parameters<typeof ipcRenderer.send>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.send(channel, ...omit)
-  },
-  invoke(...args: Parameters<typeof ipcRenderer.invoke>) {
-    const [channel, ...omit] = args
-    return ipcRenderer.invoke(channel, ...omit)
+// Exposes window.electronAPI to the renderer.
+// Vite builds this file → dist-electron/preload.mjs, loaded by electron/main.ts.
+// contextIsolation: true — renderer has no direct Node access.
+
+contextBridge.exposeInMainWorld('electronAPI', {
+
+  invoke: (channel: IPCChannel, args?: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(channel, args),
+
+  on: (channel: IPCChannel, callback: (data: unknown) => void): (() => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
+    ipcRenderer.on(channel, handler)
+    return () => ipcRenderer.removeListener(channel, handler)
   },
 
-  // You can expose other APTs you need here.
-  // ...
+  once: (channel: IPCChannel, callback: (data: unknown) => void): void => {
+    ipcRenderer.once(channel, (_event, data) => callback(data))
+  },
+
+  off: (channel: IPCChannel): void => {
+    ipcRenderer.removeAllListeners(channel)
+  },
 })
