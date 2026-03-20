@@ -1,5 +1,5 @@
-import { spawn, ChildProcess } from 'child_process'
-import * as path from 'path'
+import { spawn, ChildProcess } from 'node:child_process'
+import * as path from 'node:path'
 
 export interface LaunchedAdapter {
   process: ChildProcess

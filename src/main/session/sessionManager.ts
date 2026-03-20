@@ -34,48 +34,47 @@ export class SessionManager {
 
   // ── WIRE ALL DAP EVENTS ───────────────────────────────────
   private wireClientEvents() {
+    this.client.on('event:stopped', this.handleStopped.bind(this))
+    this.client.on('event:continued', this.handleContinued.bind(this))
+    this.client.on('event:output', this.handleOutput.bind(this))
+    this.client.on('event:terminated', this.handleTerminated.bind(this))
+    this.client.on('event:exited', this.handleExited.bind(this))
+  }
 
-    // stopped — fires when hitting a breakpoint, step completes, exception, etc
-    this.client.on('event:stopped', async (body: any) => {
-      console.log('[Session] Stopped:', body.reason, '| thread:', body.threadId)
+  private async handleStopped(body: any) {
+    console.log('[Session] Stopped:', body.reason, '| thread:', body.threadId)
 
-      this.threadId = body.threadId ?? 1
-      this.state.status = 'paused'
-      this.state.errorMessage = body.reason === 'exception'
-        ? body.text
-        : undefined
+    this.threadId = body.threadId ?? 1
+    this.state.status = 'paused'
+    this.state.errorMessage = body.reason === 'exception'
+      ? body.text
+      : undefined
 
-      // Fetch everything and push to renderer
-      await this.refreshFullState()
-      this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+    await this.refreshFullState()
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+  }
+
+  private handleContinued() {
+    this.state.status = 'running'
+    this.pushToRenderer(IPC.EVENT_CONTINUED, null)
+  }
+
+  private handleOutput(body: any) {
+    this.pushToRenderer(IPC.EVENT_OUTPUT, {
+      text: body.output,
+      category: body.category ?? 'stdout'
     })
+  }
 
-    // continued — program is running again
-    this.client.on('event:continued', () => {
-      this.state.status = 'running'
-      this.pushToRenderer(IPC.EVENT_CONTINUED, null)
-    })
+  private handleTerminated() {
+    console.log('[Session] Program terminated')
+    this.state.status = 'terminated'
+    this.pushToRenderer(IPC.EVENT_TERMINATED, null)
+    this.adapterProcess?.kill()
+  }
 
-    // output — stdout/stderr from the program being debugged
-    this.client.on('event:output', (body: any) => {
-      this.pushToRenderer(IPC.EVENT_OUTPUT, {
-        text: body.output,
-        category: body.category ?? 'stdout'
-      })
-    })
-
-    // terminated — program finished running
-    this.client.on('event:terminated', () => {
-      console.log('[Session] Program terminated')
-      this.state.status = 'terminated'
-      this.pushToRenderer(IPC.EVENT_TERMINATED, null)
-      this.adapterProcess?.kill()
-    })
-
-    // exited — process exited with a code
-    this.client.on('event:exited', (body: any) => {
-      console.log('[Session] Exited with code', body.exitCode)
-    })
+  private handleExited(body: any) {
+    console.log('[Session] Exited with code', body.exitCode)
   }
 
   // ── MAIN LAUNCH FUNCTION ──────────────────────────────────

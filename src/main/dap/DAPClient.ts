@@ -1,6 +1,6 @@
 // src/main/dap/DAPClient.ts
-import * as net from 'net';
-import { EventEmitter } from 'events';
+import * as net from 'node:net';
+import { EventEmitter } from 'node:events';
 
 interface DAPMessage {
   seq: number;
