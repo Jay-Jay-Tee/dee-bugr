@@ -239,18 +239,7 @@ export class SessionManager {
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
     if (language === 'python') {
-      // debugpy was started with --listen --wait-for-client, so we attach to it
-      await this.client.request('attach', {
-        type: 'python',
-        request: 'attach',
-        name: 'Lucid Python Debug',
-        connect: {
-          host: '127.0.0.1',
-          port,
-        },
-        pathMappings: [],
-        justMyCode: false,
-      })
+      await this.client.attach('127.0.0.1', port)
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {

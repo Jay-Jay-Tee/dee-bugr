@@ -12,8 +12,7 @@ function getFreePort(): Promise<number> {
     const srv = net.createServer()
     srv.listen(0, '127.0.0.1', () => {
       const addr = srv.address() as net.AddressInfo
-      const port = addr.port
-      srv.close(() => resolve(port))
+      srv.close(() => resolve(addr.port))
     })
     srv.on('error', reject)
   })
@@ -23,6 +22,7 @@ export async function launchPythonAdapter(
   scriptPath: string
 ): Promise<LaunchedAdapter> {
   const port = await getFreePort()
+
   return new Promise((resolve, reject) => {
     console.log(`[Python] Spawning debugpy for ${scriptPath} on port ${port}`)
 
@@ -45,29 +45,43 @@ export async function launchPythonAdapter(
       const msg = data.toString().trim()
       console.log('[debugpy stderr]', msg)
 
-      // debugpy prints this exact line when ready to accept connections
-      if (!resolved && msg.includes('Waiting for client to connect')) {
+      // debugpy prints this when the socket is open and ready
+      if (!resolved && (
+        msg.includes('Waiting for client to connect') ||
+        msg.includes('Listening on') ||
+        msg.includes('waiting for client')
+      )) {
         resolved = true
-        resolve({ process: child, port })
+        setTimeout(() => resolve({ process: child, port }), 300)
+      }
+
+      // Catch port-in-use and other fatal errors immediately
+      if (!resolved && (msg.includes('RuntimeError') || msg.includes('WinError'))) {
+        resolved = true
+        reject(new Error(`debugpy failed to start: ${msg}`))
       }
     })
 
     child.on('error', (err) => {
       console.error('[Python] Failed to spawn:', err)
-      reject(err)
+      if (!resolved) { resolved = true; reject(err) }
     })
 
     child.on('exit', (code) => {
       console.log('[Python] Process exited with code', code)
+      if (!resolved) {
+        resolved = true
+        reject(new Error(`debugpy exited with code ${code} before connecting`))
+      }
     })
 
-    // Fallback — if we never see the ready message, try connecting after 4 seconds anyway
+    // Fallback after 8 seconds
     setTimeout(() => {
       if (!resolved) {
-        console.log('[Python] No ready message seen — connecting anyway')
+        console.log('[Python] No ready message — connecting anyway')
         resolved = true
         resolve({ process: child, port })
       }
-    }, 4000)
+    }, 8000)
   })
 }
