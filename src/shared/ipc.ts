@@ -16,6 +16,7 @@ export const IPC = {
 
   // ── ADVANCED FLOW ─────────────────────────────────────────
   GOTO_LINE:          'dap:gotoLine',
+  RUN_TO_CURSOR:      'dap:runToCursor',
   RETURN_NOW:         'dap:returnNow',
   DROP_FRAME:         'dap:dropFrame',
 

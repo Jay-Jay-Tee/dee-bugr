@@ -2,7 +2,6 @@ import { app, BrowserWindow } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
-import { registerAllHandlers } from '../src/main/ipc/handlers'
 
 const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -24,6 +23,8 @@ function createWindow() {
     icon: path.join(process.env.VITE_PUBLIC!, 'electron-vite.svg'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
     },
   })
 
@@ -35,6 +36,7 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // Import ONCE here — do not also import at the top of this file
   const { registerAllHandlers } = await import('../src/main/ipc/handlers')
   registerAllHandlers()
   createWindow()

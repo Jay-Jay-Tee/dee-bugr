@@ -1,13 +1,11 @@
 // src/components/panels/Toolbar.tsx
-// Day 3: step buttons and launch/stop now invoke real IPC channels.
+// Day 4: AI buttons wired, file picker for C/C++ binary target
 
-import { useCallback } from 'react'
+import { useCallback, useState } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
 import type { Language } from '../../shared/types'
-
-// ── IPC helper ────────────────────────────────────────────────────────────────
 
 function invoke(channel: IPCChannel, args?: unknown) {
   return globalThis.electronAPI?.invoke(channel, args)
@@ -45,13 +43,14 @@ interface ToolbarBtnProps {
   disabled?: boolean
   title: string
   children: React.ReactNode
-  variant?: 'default' | 'danger' | 'accent'
+  variant?: 'default' | 'danger' | 'accent' | 'success'
 }
 
 const VARIANT_CLASS = {
   default: 'text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white',
   danger:  'text-[#f48771] hover:bg-[#f48771]/10',
   accent:  'text-[#75beff] hover:bg-[#75beff]/10',
+  success: 'text-[#4ec9b0] hover:bg-[#4ec9b0]/10',
 } as const
 
 function ToolbarBtn({ onClick, disabled, title, children, variant = 'default' }: Readonly<ToolbarBtnProps>) {
@@ -96,7 +95,7 @@ function LanguageSelector() {
   )
 }
 
-// ── Beginner / Expert toggle ──────────────────────────────────────────────────
+// ── Mode toggle ───────────────────────────────────────────────────────────────
 
 function ModeToggle() {
   const isBeginnerMode     = useDebugStore((s) => s.isBeginnerMode)
@@ -147,7 +146,7 @@ function LaunchStopBtn({ isActive, onLaunch, onStop }: {
 
 // ── Step controls ─────────────────────────────────────────────────────────────
 
-interface StepControlsProps {
+function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStepIn, onStepOut }: {
   isPaused: boolean
   isRunning: boolean
   onContinue: () => void
@@ -155,9 +154,7 @@ interface StepControlsProps {
   onNext: () => void
   onStepIn: () => void
   onStepOut: () => void
-}
-
-function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStepIn, onStepOut }: Readonly<StepControlsProps>) {
+}) {
   return (
     <>
       <ToolbarBtn title="Continue (F5)"        onClick={onContinue} disabled={!isPaused}><ContinueIcon /></ToolbarBtn>
@@ -170,32 +167,90 @@ function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStep
 }
 
 // ── AI buttons ────────────────────────────────────────────────────────────────
+// Day 4: wired to RightPanel via tab switching — the buttons open the right panel tab
 
-function AIButtons() {
+function AIButtons({ isPaused }: { isPaused: boolean }) {
+  const handleExplain = useCallback(() => {
+    // Dispatch a custom event that RightPanel listens for (or just invoke IPC directly)
+    window.dispatchEvent(new CustomEvent('lucid:ai-explain'))
+  }, [])
+
+  const handleFix = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('lucid:ai-fix'))
+  }, [])
+
   return (
     <>
-      <ToolbarBtn title="Explain Bug (AI)" disabled variant="accent"><span>⚡ Explain</span></ToolbarBtn>
-      <ToolbarBtn title="Suggest Fix (AI)" disabled variant="accent"><span>🔧 Fix</span></ToolbarBtn>
+      <ToolbarBtn title="Explain Bug (AI) — paused required" onClick={handleExplain} disabled={!isPaused} variant="accent">
+        <span>⚡ Explain</span>
+      </ToolbarBtn>
+      <ToolbarBtn title="Suggest Fix (AI) — paused required" onClick={handleFix} disabled={!isPaused} variant="success">
+        <span>🔧 Fix</span>
+      </ToolbarBtn>
     </>
+  )
+}
+
+// ── File path input bar ───────────────────────────────────────────────────────
+
+const PLACEHOLDER: Record<string, string> = {
+  python:     'Path to script  e.g. C:\\Users\\you\\script.py',
+  javascript: 'Path to script  e.g. C:\\Users\\you\\app.js',
+  cpp:        'Path to compiled binary  e.g. C:\\Temp\\program.exe',
+  c:          'Path to compiled binary  e.g. C:\\Temp\\program.exe',
+  java:       'Main class name  e.g. Main',
+}
+
+function FileInputBar({ language, onLaunch }: {
+  language: Language
+  onLaunch: (target: string) => void
+}) {
+  const [value, setValue] = useState('')
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && value.trim()) {
+      onLaunch(value.trim())
+    }
+  }, [value, onLaunch])
+
+  const handleGo = useCallback(() => {
+    if (value.trim()) onLaunch(value.trim())
+  }, [value, onLaunch])
+
+  return (
+    <div className="flex items-center gap-1 flex-1 min-w-0">
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={PLACEHOLDER[language] ?? 'Path to file...'}
+        className="flex-1 min-w-0 bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+      />
+      <button
+        onClick={handleGo}
+        disabled={!value.trim()}
+        className="px-2 py-1.5 text-xs rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
+      >
+        Go
+      </button>
+    </div>
   )
 }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 export default function Toolbar() {
-  const status    = useDebugStore((s) => s.status)
-  const language  = useDebugStore((s) => s.language)
+  const status      = useDebugStore((s) => s.status)
+  const language    = useDebugStore((s) => s.language)
   const currentFile = useDebugStore((s) => s.currentFile)
-  const isRunning = status === 'running' || status === 'launching'
-  const isPaused  = status === 'paused'
+  const isRunning   = status === 'running' || status === 'launching'
+  const isPaused    = status === 'paused'
+  const isIdle      = status === 'idle' || status === 'terminated'
 
-  const handleLaunch   = useCallback(() => {
-    // Passes current language + open file. In full implementation a file-picker
-    // dialog would be shown here. For now target = currentFile or a prompt.
-    const target = currentFile || prompt('Path to script to debug:') || ''
-    if (!target) return
+  const handleLaunch = useCallback((target: string) => {
     invoke(IPC.LAUNCH, { language, target })
-  }, [language, currentFile])
+  }, [language])
 
   const handleStop     = useCallback(() => invoke(IPC.TERMINATE), [])
   const handleContinue = useCallback(() => invoke(IPC.CONTINUE), [])
@@ -208,20 +263,32 @@ export default function Toolbar() {
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
       <LanguageSelector />
       <Divider />
-      <LaunchStopBtn isActive={isRunning || isPaused} onLaunch={handleLaunch} onStop={handleStop} />
-      <Divider />
-      <StepControls
-        isPaused={isPaused}
-        isRunning={isRunning}
-        onContinue={handleContinue}
-        onPause={handlePause}
-        onNext={handleNext}
-        onStepIn={handleStepIn}
-        onStepOut={handleStepOut}
-      />
-      <Divider />
-      <AIButtons />
-      <div className="flex-1" />
+
+      {isIdle ? (
+        /* Idle: show file path input + Go button */
+        <FileInputBar language={language} onLaunch={handleLaunch} />
+      ) : (
+        /* Active: show stop + step controls */
+        <>
+          <ToolbarBtn title="Stop (Shift+F5)" onClick={handleStop} variant="danger">
+            <StopIcon /><span>Stop</span>
+          </ToolbarBtn>
+          <Divider />
+          <StepControls
+            isPaused={isPaused}
+            isRunning={isRunning}
+            onContinue={handleContinue}
+            onPause={handlePause}
+            onNext={handleNext}
+            onStepIn={handleStepIn}
+            onStepOut={handleStepOut}
+          />
+          <Divider />
+          <AIButtons isPaused={isPaused} />
+          <div className="flex-1" />
+        </>
+      )}
+
       <ModeToggle />
       <div className="w-2" />
       <StatusIndicator status={status} />

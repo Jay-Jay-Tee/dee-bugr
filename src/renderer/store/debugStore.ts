@@ -175,6 +175,18 @@ export function initIPCListeners() {
         }
       })
     )
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_ANOMALY, (data: unknown) => {
+        // Anomalies are already baked into state via EVENT_STOPPED
+        // This event lets P2 show real-time margin indicators
+        console.log('[Store] Anomaly detected:', data)
+      })
+    )
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_RETURN_VAL, (data: unknown) => {
+        console.log('[Store] Return value captured:', data)
+      })
+    )
   } catch (error) {
     console.error('Failed to initialize IPC listeners:', error)
     listenersInitialized = false

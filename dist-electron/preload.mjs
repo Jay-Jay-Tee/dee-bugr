@@ -7,10 +7,5 @@ electron.contextBridge.exposeInMainWorld("electronAPI", {
     electron.ipcRenderer.on(channel, handler);
     return () => electron.ipcRenderer.removeListener(channel, handler);
   },
-  once: (channel, callback) => {
-    electron.ipcRenderer.once(channel, (_event, data) => callback(data));
-  },
-  off: (channel) => {
-    electron.ipcRenderer.removeAllListeners(channel);
-  }
+  off: (channel) => electron.ipcRenderer.removeAllListeners(channel)
 });

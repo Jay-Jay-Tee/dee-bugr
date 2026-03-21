@@ -3,6 +3,10 @@ import type { IPCChannel } from '../shared/ipc'
 export {}
 
 declare global {
+  interface globalThis {
+    electronAPI: ElectronAPI
+  }
+
   interface Window {
     electronAPI: ElectronAPI
   }
