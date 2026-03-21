@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'node:child_process'
+import * as net from 'node:net'
 import * as path from 'node:path'
 
 export interface LaunchedAdapter {
@@ -6,10 +7,22 @@ export interface LaunchedAdapter {
   port: number
 }
 
-export function launchPythonAdapter(
-  scriptPath: string,
-  port = 5678
+function getFreePort(): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer()
+    srv.listen(0, '127.0.0.1', () => {
+      const addr = srv.address() as net.AddressInfo
+      const port = addr.port
+      srv.close(() => resolve(port))
+    })
+    srv.on('error', reject)
+  })
+}
+
+export async function launchPythonAdapter(
+  scriptPath: string
 ): Promise<LaunchedAdapter> {
+  const port = await getFreePort()
   return new Promise((resolve, reject) => {
     console.log(`[Python] Spawning debugpy for ${scriptPath} on port ${port}`)
 

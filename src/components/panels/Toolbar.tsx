@@ -1,7 +1,7 @@
 // src/components/panels/Toolbar.tsx
 // Day 4: AI buttons wired, file picker for C/C++ binary target
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
@@ -206,16 +206,23 @@ function FileInputBar({ language, onLaunch }: {
   onLaunch: (target: string) => void
 }) {
   const [value, setValue] = useState('')
+  const [launching, setLaunching] = useState(false)
+  const status = useDebugStore((s) => s.status)
+
+  // Reset launching state when session status changes away from idle
+  useEffect(() => {
+    if (status !== 'idle') setLaunching(false)
+  }, [status])
+
+  const handleLaunch = useCallback(() => {
+    if (!value.trim() || launching) return
+    setLaunching(true)
+    onLaunch(value.trim())
+  }, [value, launching, onLaunch])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && value.trim()) {
-      onLaunch(value.trim())
-    }
-  }, [value, onLaunch])
-
-  const handleGo = useCallback(() => {
-    if (value.trim()) onLaunch(value.trim())
-  }, [value, onLaunch])
+    if (e.key === 'Enter') handleLaunch()
+  }, [handleLaunch])
 
   return (
     <div className="flex items-center gap-1 flex-1 min-w-0">
@@ -225,14 +232,15 @@ function FileInputBar({ language, onLaunch }: {
         onChange={(e) => setValue(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder={PLACEHOLDER[language] ?? 'Path to file...'}
-        className="flex-1 min-w-0 bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+        disabled={launching}
+        className="flex-1 min-w-0 bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-blue-500 font-mono disabled:opacity-50"
       />
       <button
-        onClick={handleGo}
-        disabled={!value.trim()}
+        onClick={handleLaunch}
+        disabled={!value.trim() || launching}
         className="px-2 py-1.5 text-xs rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0"
       >
-        Go
+        {launching ? 'Launching...' : 'Go'}
       </button>
     </div>
   )

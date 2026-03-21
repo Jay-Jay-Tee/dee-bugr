@@ -91,13 +91,13 @@ export class DAPClient extends EventEmitter {
       this.pending.set(seq, { resolve, reject, command });
       this.sendRaw(message);
 
-      // Timeout individual requests after 15 seconds
+      // Timeout individual requests after 30 seconds
       setTimeout(() => {
         if (this.pending.has(seq)) {
           this.pending.delete(seq);
           reject(new Error(`[DAP] Request timeout: ${command}`));
         }
-      }, 15000);
+      }, 30000);
     });
   }
 

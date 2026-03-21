@@ -231,7 +231,7 @@ export class SessionManager {
       throw new Error(`Language not yet supported: ${language}`)
     }
 
-    await this.sleep(1000)
+    await this.sleep(1500)
     await this.client.connect('127.0.0.1', port)
     console.log('[Session] DAPClient connected')
 
@@ -239,7 +239,18 @@ export class SessionManager {
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
     if (language === 'python') {
-      await this.client.attach('127.0.0.1', port)
+      // debugpy was started with --listen --wait-for-client, so we attach to it
+      await this.client.request('attach', {
+        type: 'python',
+        request: 'attach',
+        name: 'Lucid Python Debug',
+        connect: {
+          host: '127.0.0.1',
+          port,
+        },
+        pathMappings: [],
+        justMyCode: false,
+      })
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {
