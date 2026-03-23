@@ -10,7 +10,11 @@ import BreakpointPanel from './BreakpointPanel'
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
 function invoke(channel: typeof IPC[keyof typeof IPC], args?: unknown) {
-  return globalThis.electronAPI?.invoke(channel, args)
+  const api = (window as Window & {
+    electronAPI?: { invoke: (ch: typeof IPC[keyof typeof IPC], payload?: unknown) => Promise<unknown> }
+  }).electronAPI
+
+  return api?.invoke(channel, args)
     .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 

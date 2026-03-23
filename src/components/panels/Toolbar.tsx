@@ -8,7 +8,11 @@ import type { IPCChannel } from '../../shared/ipc'
 import type { Language } from '../../shared/types'
 
 function invoke(channel: IPCChannel, args?: unknown) {
-  return globalThis.electronAPI?.invoke(channel, args)
+  const api = (window as Window & {
+    electronAPI?: { invoke: (ch: IPCChannel, payload?: unknown) => Promise<unknown> }
+  }).electronAPI
+
+  return api?.invoke(channel, args)
     .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 

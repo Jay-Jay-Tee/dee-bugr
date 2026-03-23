@@ -7,7 +7,7 @@ async function test() {
   const scriptPath = path.resolve('./tmp//test_script.py')
 
   console.log('=== Step 1: Launch debugpy ===')
-  const adapter = await launchPythonAdapter(scriptPath, 5678)
+  const adapter = await launchPythonAdapter(scriptPath)
   console.log('Adapter ready on port', adapter.port)
 
   // Wait for debugpy to fully start
@@ -15,7 +15,7 @@ async function test() {
 
   console.log('=== Step 2: Connect DAPClient ===')
   const client = new DAPClient()
-  await client.connect('127.0.0.1', 5678)
+  await client.connect('127.0.0.1', adapter.port)
   console.log('Connected')
 
   // Set up the initialized flag BEFORE anything else to avoid race conditions.
@@ -76,7 +76,7 @@ async function test() {
   console.log('=== Step 4: Attach ===')
   // Do NOT await attach yet — debugpy holds the attach response until it
   // receives configurationDone, so awaiting here would cause a deadlock.
-  const attachPromise = client.attach('127.0.0.1', 5678)
+  const attachPromise = client.attach('127.0.0.1', adapter.port)
 
   // Wait for 'initialized' event if it hasn't arrived yet.
   // debugpy fires this after receiving attach, signalling it's ready for config.
