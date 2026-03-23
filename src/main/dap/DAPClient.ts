@@ -97,7 +97,7 @@ export class DAPClient extends EventEmitter {
           this.pending.delete(seq);
           reject(new Error(`[DAP] Request timeout: ${command}`));
         }
-      }, 30000);
+      }, 60000);
     });
   }
 

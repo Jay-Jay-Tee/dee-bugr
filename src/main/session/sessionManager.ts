@@ -244,8 +244,24 @@ export class SessionManager {
     const initBody = await this.client.initialize()
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
+    // For Python: attach first, then set breakpoints, then configurationDone
+    // For others: launch first, then set breakpoints, then configurationDone
     if (language === 'python') {
-      await this.client.attach('127.0.0.1', port, 'python')
+      // debugpy attach — must happen after initialize, before setBreakpoints
+      await this.client.request('attach', {
+        type: 'python',
+        request: 'attach',
+        name: 'Attach to debugpy',
+        connect: { host: '127.0.0.1', port },
+        pathMappings: [],
+        justMyCode: false,
+      })
+      // Wait for the 'initialized' event before setting breakpoints
+      await new Promise<void>((resolve) => {
+        // initialized event may have already fired — check via a short race
+        const timeout = setTimeout(resolve, 2000)
+        this.client.once('event:initialized', () => { clearTimeout(timeout); resolve() })
+      })
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {
@@ -254,7 +270,7 @@ export class SessionManager {
       await this.client.request('attach', buildJavaAttachArgs(5005))
     }
 
-    // Set initial breakpoints via BreakpointManager
+    // Set initial breakpoints AFTER initialized event
     for (const line of breakpointLines) {
       await this.bpManager.set({ file: scriptPath, line })
     }
