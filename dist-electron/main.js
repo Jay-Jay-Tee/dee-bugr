@@ -26,7 +26,7 @@ function createWindow() {
   }
 }
 app.whenReady().then(async () => {
-  const { registerAllHandlers } = await import("./handlers-B0pvk-wM.js");
+  const { registerAllHandlers } = await import("./handlers-Cgraht6q.js");
   registerAllHandlers();
   createWindow();
 });
