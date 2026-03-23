@@ -249,17 +249,15 @@ function FileInputBar({ language, onLaunch }: {
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 export default function Toolbar() {
-  const status      = useDebugStore((s) => s.status)
-  const language    = useDebugStore((s) => s.language)
-  const currentFile = useDebugStore((s) => s.currentFile)
-  const isRunning   = status === 'running' || status === 'launching'
-  const isPaused    = status === 'paused'
-  const isIdle      = status === 'idle' || status === 'terminated'
+  const status        = useDebugStore((s) => s.status)
+  const language      = useDebugStore((s) => s.language)
+  const anomalies     = useDebugStore((s) => s.anomalies)
+  const lastReturnVal = useDebugStore((s) => s.lastReturnValue)
+  const isRunning     = status === 'running' || status === 'launching'
+  const isPaused      = status === 'paused'
+  const isIdle        = status === 'idle' || status === 'terminated'
 
-  const handleLaunch = useCallback((target: string) => {
-    invoke(IPC.LAUNCH, { language, target })
-  }, [language])
-
+  const handleLaunch   = useCallback((target: string) => { invoke(IPC.LAUNCH, { language, target }) }, [language])
   const handleStop     = useCallback(() => invoke(IPC.TERMINATE), [])
   const handleContinue = useCallback(() => invoke(IPC.CONTINUE), [])
   const handlePause    = useCallback(() => invoke(IPC.PAUSE), [])
@@ -273,10 +271,8 @@ export default function Toolbar() {
       <Divider />
 
       {isIdle ? (
-        /* Idle: show file path input + Go button */
         <FileInputBar language={language} onLaunch={handleLaunch} />
       ) : (
-        /* Active: show stop + step controls */
         <>
           <ToolbarBtn title="Stop (Shift+F5)" onClick={handleStop} variant="danger">
             <StopIcon /><span>Stop</span>
@@ -293,6 +289,22 @@ export default function Toolbar() {
           />
           <Divider />
           <AIButtons isPaused={isPaused} />
+
+          {/* Return value badge — shows after stepOut */}
+          {lastReturnVal && isPaused && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#2d2d2d] text-xs ml-1">
+              <span className="text-[#969696]">↩ {lastReturnVal.fnName}:</span>
+              <span className="text-[#4ec9b0] font-mono">{lastReturnVal.value}</span>
+            </div>
+          )}
+
+          {/* Anomaly count badge */}
+          {anomalies.length > 0 && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-900/40 text-xs ml-1 text-amber-300">
+              ⚠ {anomalies.length} {anomalies.length === 1 ? 'anomaly' : 'anomalies'}
+            </div>
+          )}
+
           <div className="flex-1" />
         </>
       )}

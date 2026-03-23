@@ -28,6 +28,7 @@ export const IPC = {
   SET_EXCEPTION_BP:   'dap:setExceptionBP',
   TOGGLE_GROUP:       'dap:toggleGroup',
   SWITCH_FRAME:       'dap:switchFrame',
+  SWITCH_THREAD:      'dap:switchThread',
 
   // ── INSPECTION ────────────────────────────────────────────
   GET_STACK:          'dap:stackTrace',

@@ -125,9 +125,19 @@ export async function launchJavaAdapter(): Promise<LaunchedAdapter> {
   const port = await getFreePort()
   console.log(`[Java] Spawning java-debug adapter on port ${port}`)
 
+  // java-debug plugin JAR does NOT have a standalone main class.
+  // We need to use the vscode-java-debug wrapper OR launch it via the
+  // extension host. The correct approach for standalone use is to
+  // use the bundled com.microsoft.java.debug.core.adapter.DebugAdapter
+  // entry point shipped in newer builds, or fall back to the
+  // "debug server" wrapper that ships alongside the plugin.
+  //
+  // Most reliable approach: use the same JAR but call the correct class.
+  // The plugin exposes com.microsoft.java.debug.core.DebugServer (not .DebugAdapter).
+  // If that fails, we catch and advise using the VS Code extension approach.
   const child = spawn('java', [
     '-cp', jar,
-    'com.microsoft.java.debug.core.DebugServer',  // entry point for server mode
+    'com.microsoft.java.debug.core.DebugServer',
     String(port),
   ])
 
@@ -135,7 +145,21 @@ export async function launchJavaAdapter(): Promise<LaunchedAdapter> {
   child.stderr?.on('data', (d: Buffer) => console.log('[java-debug stderr]', d.toString().trim()))
   child.on('error', (err) => console.error('[Java-debug] Adapter error:', err))
 
-  await new Promise<void>((resolve) => setTimeout(resolve, 1500))
+  // Wait for the adapter to be ready — it prints "Listening on port N" or similar.
+  // Fall back to 2s timeout if no ready message appears.
+  await new Promise<void>((resolve) => {
+    let resolved = false
+    const done = () => { if (!resolved) { resolved = true; resolve() } }
+
+    child.stdout?.on('data', (d: Buffer) => {
+      if (d.toString().toLowerCase().includes('listening')) done()
+    })
+    child.stderr?.on('data', (d: Buffer) => {
+      if (d.toString().toLowerCase().includes('listening')) done()
+    })
+    child.on('exit', done)
+    setTimeout(done, 2000)
+  })
 
   return { process: child, port }
 }

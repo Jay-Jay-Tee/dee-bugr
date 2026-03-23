@@ -192,6 +192,15 @@ export function registerAllHandlers() {
     }
   })
 
+  ipcMain.handle('dap:switchThread', async (_, args: { threadId: number }) => {
+    try {
+      await session.switchThread(args.threadId)
+      return { success: true }
+    } catch (err: unknown) {
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
+    }
+  })
+
   ipcMain.handle(IPC.READ_MEMORY, async (_, args: { memoryReference: string; count?: number }) =>
     session.readMemory(args.memoryReference, args.count))
 
@@ -229,7 +238,7 @@ export function registerAllHandlers() {
   ipcMain.handle(IPC.AI_FIX, async () => {
     try {
       const { suggestFix } = require('../ai/groq')
-      const fix = await suggestFix()
+      const fix = await suggestFix() // now returns { originalCode, fixedCode, explanation }
       return { success: true, fix }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)

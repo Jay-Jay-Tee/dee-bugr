@@ -161,6 +161,12 @@ export class SessionManager {
     }
 
     await this.refreshFullState()
+
+    // v2: capture return value when stopping after a step-out
+    if (body['reason'] === 'step') {
+      await this.captureReturnValue()
+    }
+
     this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
   }
 
@@ -239,7 +245,7 @@ export class SessionManager {
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
     if (language === 'python') {
-      await this.client.attach('127.0.0.1', port)
+      await this.client.attach('127.0.0.1', port, 'python')
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {
@@ -361,8 +367,8 @@ export class SessionManager {
         this.state.sourceLines = fs.readFileSync(this.state.currentFile, 'utf8').split('\n')
       } catch { /* file may not be accessible */ }
 
-      // Auto-disassembly for C/C++ (Day 4)
-      if ((this.language === 'c' || this.language === 'cpp') && allVars.length > 0) {
+      // Auto-disassembly for C/C++ and Java
+      if ((this.language === 'c' || this.language === 'cpp' || this.language === 'java') && allVars.length > 0) {
         const withMem = allVars.find(v => v.memoryReference)
         if (withMem?.memoryReference) {
           try {
@@ -472,9 +478,9 @@ export class SessionManager {
 
   async stepOut() {
     this.state.status = 'running'
+    // NOTE: return value is captured in handleStopped() after the adapter
+    // emits a stopped event — NOT here, because the program hasn't paused yet.
     await this.client.stepOut(this.threadId)
-    // v2: capture return value after stepOut
-    await this.captureReturnValue()
   }
 
   async pause() {
@@ -556,6 +562,13 @@ export class SessionManager {
 
   async setVariable(variablesReference: number, name: string, value: string) {
     return this.client.setVariable(variablesReference, name, value)
+  }
+
+  /** Switch the active thread — refreshes call stack + variables for that thread. */
+  async switchThread(newThreadId: number): Promise<void> {
+    this.threadId = newThreadId
+    await this.refreshFullState()
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
   }
 
   async switchFrame(frameId: number): Promise<Variable[]> {

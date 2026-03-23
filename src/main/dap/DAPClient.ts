@@ -212,16 +212,16 @@ export class DAPClient extends EventEmitter {
     });
   }
 
-  async attach(host: string, port: number) {
+  async attach(host: string, port: number, adapterType = 'python') {
     return this.request('attach', {
-        type: 'python',
-        request: 'attach',
-        name: 'Attach to debugpy',
-        connect: { host, port },
-        pathMappings: [],
-        justMyCode: false,
+      type: adapterType,
+      request: 'attach',
+      name: `Attach to ${adapterType}`,
+      connect: { host, port },
+      pathMappings: [],
+      justMyCode: false,
     });
-    }
+  }
 
   async setBreakpoints(file: string, lines: number[], conditions?: Record<number, string>) {
     return this.request('setBreakpoints', {

@@ -97,14 +97,16 @@ What bug or issue is likely present at this execution point?
 
 /**
  * Suggest a fix for the current bug.
- * Returns a suggested code fix or mitigation.
+ * Returns { originalCode, fixedCode, explanation } for the Monaco diff editor.
  */
-export async function suggestFix(): Promise<string> {
+export async function suggestFix(): Promise<{ originalCode: string; fixedCode: string; explanation: string }> {
   const context = getDebugContext()
 
   const systemPrompt =
-    'You are an expert code reviewer. Given the execution context, suggest a specific code fix or workaround. ' +
-    'Be practical and concise. Format your suggestion as a brief code snippet or explanation.'
+    'You are an expert code reviewer. Given the execution context, suggest a specific code fix. ' +
+    'Return ONLY a valid JSON object with exactly these keys: ' +
+    '{ "originalCode": "the buggy lines", "fixedCode": "the corrected lines", "explanation": "one sentence why" }. ' +
+    'No markdown. No backticks. No extra text. Only the JSON object.'
 
   const userPrompt = `
 Debug Context:
@@ -118,10 +120,24 @@ ${context.sourceCodeSnippet}
 Variables:
 ${context.localVariables}
 
-What specific code change would fix this bug?
+Return a JSON object with originalCode, fixedCode, and explanation:
 `.trim()
 
-  return await callGroq(systemPrompt, userPrompt)
+  try {
+    const raw = await callGroq(systemPrompt, userPrompt)
+    // Strip markdown fences if model wraps anyway
+    const cleaned = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(cleaned)
+    return {
+      originalCode:  typeof parsed.originalCode === 'string'  ? parsed.originalCode  : '',
+      fixedCode:     typeof parsed.fixedCode    === 'string'  ? parsed.fixedCode     : '',
+      explanation:   typeof parsed.explanation  === 'string'  ? parsed.explanation   : '',
+    }
+  } catch (err) {
+    console.error('[AI] suggestFix JSON parse failed:', err)
+    // Graceful fallback: return the raw text as explanation so UI still shows something
+    return { originalCode: context.sourceCodeSnippet, fixedCode: '', explanation: String(err) }
+  }
 }
 
 /**

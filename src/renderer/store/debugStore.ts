@@ -177,14 +177,27 @@ export function initIPCListeners() {
     )
     unsubscribers.push(
       globalThis.electronAPI.on(IPC.EVENT_ANOMALY, (data: unknown) => {
-        // Anomalies are already baked into state via EVENT_STOPPED
-        // This event lets P2 show real-time margin indicators
-        console.log('[Store] Anomaly detected:', data)
+        // Anomalies already arrive baked into the full state via EVENT_STOPPED.
+        // This real-time event lets us surface them immediately before the full
+        // state update arrives (e.g. for margin indicators).
+        const store = useDebugStore.getState()
+        const anomaly = data as import('../../shared/types').Anomaly
+        if (anomaly && typeof anomaly.message === 'string') {
+          const existing = store.anomalies ?? []
+          const alreadyPresent = existing.some(a => a.message === anomaly.message)
+          if (!alreadyPresent) {
+            store.setState({ ...store, anomalies: [...existing, anomaly] })
+          }
+        }
       })
     )
     unsubscribers.push(
       globalThis.electronAPI.on(IPC.EVENT_RETURN_VAL, (data: unknown) => {
-        console.log('[Store] Return value captured:', data)
+        const rv = data as import('../../shared/types').ReturnValue
+        if (rv && typeof rv.fnName === 'string') {
+          const store = useDebugStore.getState()
+          store.setState({ ...store, lastReturnValue: rv })
+        }
       })
     )
   } catch (error) {

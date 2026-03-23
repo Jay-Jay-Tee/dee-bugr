@@ -161,6 +161,7 @@ function CallStackPanel() {
   const frames  = useDebugStore((s) => s.stackFrames)
   const threads = useDebugStore((s) => s.threads)
   const status  = useDebugStore((s) => s.status)
+  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
   const [activeFrame, setActiveFrame] = useState(0)
 
   const handleFrameClick = useCallback((frame: StackFrame) => {
@@ -168,10 +169,20 @@ function CallStackPanel() {
     invoke(IPC.SWITCH_FRAME, { frameId: frame.id })
   }, [])
 
+  const handleThreadChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    const threadId = Number(e.target.value)
+    if (!isNaN(threadId)) {
+      invoke('dap:switchThread' as any, { threadId })
+    }
+  }, [])
+
   return (
     <div className="flex flex-col h-full">
       <div className="px-2 py-1.5 border-b border-[#3c3c3c] shrink-0">
-        <select className="w-full bg-[#3c3c3c] text-xs text-white px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500">
+        <select
+          onChange={handleThreadChange}
+          className="w-full bg-[#3c3c3c] text-xs text-white px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
+        >
           {threads.length === 0 ? (
             <option>No threads</option>
           ) : (
@@ -197,12 +208,22 @@ function CallStackPanel() {
               ].join(' ')}
             >
               <div className="flex items-center gap-2">
-                <span className="text-[#969696] text-[10px] w-4 shrink-0">#{frame.id}</span>
+                {!isBeginnerMode && (
+                  <span className="text-[#969696] text-[10px] w-4 shrink-0">#{frame.id}</span>
+                )}
                 <span className="text-[#dcdcaa] text-xs font-mono truncate">{frame.name}</span>
               </div>
               <div className="text-[#969696] text-[10px] font-mono mt-0.5 ml-6 truncate">
-                {shortFile(frame.file)}:{frame.line}
+                {isBeginnerMode
+                  ? `${frame.file.split('/').pop()}  line ${frame.line}`
+                  : `${shortFile(frame.file)}:${frame.line}`
+                }
               </div>
+              {isBeginnerMode && frame.variableCount !== undefined && frame.variableCount > 0 && (
+                <div className="text-[10px] text-[#569cd6] ml-6 mt-0.5">
+                  {frame.variableCount} local {frame.variableCount === 1 ? 'variable' : 'variables'}
+                </div>
+              )}
             </div>
           ))
         )}
