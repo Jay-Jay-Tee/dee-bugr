@@ -3,16 +3,18 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
+import AIFixPanel from './AIFixPanel'
 import type { HistoryEntry } from '../../shared/types'
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-type Tab = 'console' | 'history' | 'memory'
+type Tab = 'console' | 'history' | 'memory' | 'aifix'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'console', label: 'Console' },
   { id: 'history', label: 'History' },
   { id: 'memory',  label: 'Memory'  },
+  { id: 'aifix',   label: 'AI Fix'  },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -227,6 +229,7 @@ export default function BottomPanel() {
       {tab === 'console' && <ConsoleTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'memory'  && <MemoryTab  />}
+      {tab === 'aifix'   && <AIFixPanel />}
     </div>
   )
 }

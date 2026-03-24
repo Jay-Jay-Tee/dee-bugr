@@ -6,6 +6,8 @@ import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
 import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
 import BreakpointPanel from './BreakpointPanel'
+import VariableTooltip from './VariableTooltip'
+import AIWatchpointGenerator from './AIWatchpointGenerator'
 
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
@@ -15,7 +17,7 @@ function invoke(channel: typeof IPC[keyof typeof IPC], args?: unknown) {
   }).electronAPI
 
   return api?.invoke(channel, args)
-    .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
+    ?.catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 
 // ── Type guard ────────────────────────────────────────────────────────────────
@@ -81,6 +83,7 @@ interface VariableRowProps {
 function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
   const [expanded,     setExpanded]     = useState(false)
   const [liveChildren, setLiveChildren] = useState<Variable[] | null>(null)
+  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
 
   const hasChildren = variable.variablesReference > 0
   const children    = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
@@ -108,7 +111,13 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
         <span className="w-3 shrink-0 text-[#969696]">
           {hasChildren ? (expanded ? '▾' : '▸') : ' '}
         </span>
-        <span className="text-[#9cdcfe] w-28 shrink-0 truncate">{variable.name}</span>
+        <span className="text-[#9cdcfe] w-28 shrink-0 truncate">
+          {isBeginnerMode ? (
+            <VariableTooltip varName={variable.name} varValue={variable.value} varType={variable.type} />
+          ) : (
+            variable.name
+          )}
+        </span>
         <span className={['flex-1 truncate', isNull ? 'text-red-400 font-medium' : typeColor(variable.type)].join(' ')}>
           {variable.value}
         </span>
@@ -144,12 +153,8 @@ function VariablesPanel() {
           vars.map((v) => <VariableRow key={v.name} variable={v} />)
         )}
       </div>
-      <div className="border-t border-[#3c3c3c] px-2 py-1.5 shrink-0">
-        <input
-          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="Watch expression (Day 4)"
-          disabled
-        />
+      <div className="border-t border-[#3c3c3c] p-2 shrink-0">
+        <AIWatchpointGenerator />
       </div>
     </div>
   )

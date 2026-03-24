@@ -1,16 +1,17 @@
-// src/main/ipc/handlers.ts
-// All IPC channels registered here — v1 + v2 combined through Day 4.
+﻿// src/main/ipc/handlers.ts
+// All IPC channels registered here â€” v1 + v2 combined through Day 4.
 // Day 5-6 features that need UI from P2 are registered but delegate to
 // fully-implemented session methods.
 
 import { ipcMain } from 'electron'
+import { readFile } from 'node:fs/promises'
 import { IPC } from '../../shared/ipc'
 import { session } from '../session/sessionManager'
 import type { Language } from '../../shared/types'
 
 export function registerAllHandlers() {
 
-  // ── LIFECYCLE ──────────────────────────────────────────────────────────────
+  // â”€â”€ LIFECYCLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   ipcMain.handle(IPC.LAUNCH, async (_, args: {
     language: Language
@@ -38,7 +39,7 @@ export function registerAllHandlers() {
     return { success: true }
   })
 
-  // ── STEPPING ───────────────────────────────────────────────────────────────
+  // â”€â”€ STEPPING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   ipcMain.handle(IPC.NEXT,     async () => { await session.stepOver();          return { success: true } })
   ipcMain.handle(IPC.STEP_IN,  async () => { await session.stepIn();            return { success: true } })
@@ -46,7 +47,7 @@ export function registerAllHandlers() {
   ipcMain.handle(IPC.CONTINUE, async () => { await session.continueExecution(); return { success: true } })
   ipcMain.handle(IPC.PAUSE,    async () => { await session.pause();             return { success: true } })
 
-  // ── ADVANCED FLOW (v1 Day 8 / v2 Day 5) ───────────────────────────────────
+  // â”€â”€ ADVANCED FLOW (v1 Day 8 / v2 Day 5) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   ipcMain.handle(IPC.GOTO_LINE, async (_, args: { file: string; line: number }) => {
     try {
@@ -85,7 +86,7 @@ export function registerAllHandlers() {
     }
   })
 
-  // ── BREAKPOINTS ────────────────────────────────────────────────────────────
+  // â”€â”€ BREAKPOINTS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   ipcMain.handle(IPC.SET_BREAKPOINT, async (_, args: {
     file:       string
@@ -167,7 +168,7 @@ export function registerAllHandlers() {
     }
   })
 
-  // ── INSPECTION ─────────────────────────────────────────────────────────────
+  // â”€â”€ INSPECTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   ipcMain.handle(IPC.GET_VARIABLES, async (_, args: { variablesReference: number }) =>
     session.fetchVariables(args.variablesReference))
@@ -209,11 +210,11 @@ export function registerAllHandlers() {
 
   ipcMain.handle(IPC.GET_DEBUG_CONTEXT, () => session.getDebugContext())
 
-  // ── HISTORY ────────────────────────────────────────────────────────────────
+  // â”€â”€ HISTORY â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   // JUMP_TO_STEP: renderer asks to restore state at a given step index
   // This is used by P3's click-to-step on the history chart
-  // For now: returns the history entry — P2/P3 restore the Monaco cursor
+  // For now: returns the history entry â€” P2/P3 restore the Monaco cursor
   ipcMain.handle(IPC.JUMP_TO_STEP, async (_, args: { step: number }) => {
     const state = session.getState()
     const entry = state.executionHistory.find(h => h.step === args.step)
@@ -221,7 +222,7 @@ export function registerAllHandlers() {
     return { success: true, entry }
   })
 
-  // ── AI HANDLERS ─────────────────────────────────────────────────────────────
+  // â”€â”€ AI HANDLERS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   ipcMain.handle(IPC.AI_EXPLAIN, async () => {
     try {
@@ -258,10 +259,54 @@ export function registerAllHandlers() {
     }
   })
 
+  ipcMain.handle(IPC.AI_VAR_TOOLTIP, async (_, args: { varName: string; varValue: string; varType?: string }) => {
+    try {
+      const { explainVariableTooltip } = require('../ai/groq')
+      const tooltip = await explainVariableTooltip(args.varName, args.varValue, args.varType)
+      return { success: true, tooltip }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_GENERATE_WATCHPOINT, async (_, args: { description: string; language: Language; availableVariables: string[] }) => {
+    try {
+      const { generateWatchpointExpression } = require('../ai/groq')
+      const expression = await generateWatchpointExpression(args.description, args.language, args.availableVariables)
+      return { success: true, expression }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
   ipcMain.handle(IPC.AI_WATCHPOINT, async () => {
     try {
       const { generateWatch } = require('../ai/groq')
       const suggestions = await generateWatch()
+      return { success: true, suggestions }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.AI_LOG_BREAKPOINTS, async (_, args: { logFilePath: string }) => {
+    try {
+      const logText = await readFile(args.logFilePath, 'utf-8')
+      const lines = logText.split(/\r?\n/)
+      const tail = lines.slice(-100).join('\n')
+
+      const state = session.getState()
+      const language = state.language
+      const sourceLines = state.sourceLines ?? []
+      const sourceCodeWithLines = sourceLines
+        .map((line, idx) => `${idx + 1}: ${line}`)
+        .join('\n')
+
+      const { suggestBreakpointsFromLogs } = require('../ai/groq')
+      const suggestions = await suggestBreakpointsFromLogs(tail, language, sourceCodeWithLines)
       return { success: true, suggestions }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -293,3 +338,4 @@ export function registerAllHandlers() {
 
   console.log('[IPC] All handlers registered')
 }
+

@@ -36,6 +36,7 @@ export async function launchPythonAdapter(
     })
 
     let resolved = false
+    let stderrLog = ''
 
     child.stdout?.on('data', (data: Buffer) => {
       console.log('[debugpy stdout]', data.toString().trim())
@@ -43,6 +44,7 @@ export async function launchPythonAdapter(
 
     child.stderr?.on('data', (data: Buffer) => {
       const msg = data.toString().trim()
+      stderrLog += `${msg}\n`
       console.log('[debugpy stderr]', msg)
 
       // debugpy prints this when the socket is open and ready
@@ -71,6 +73,13 @@ export async function launchPythonAdapter(
       console.log('[Python] Process exited with code', code)
       if (!resolved) {
         resolved = true
+        if (stderrLog.includes('No module named debugpy')) {
+          reject(new Error(
+            'debugpy is not installed in the Python interpreter used by DEE-BUGR. ' +
+            'Install it with: python -m pip install debugpy'
+          ))
+          return
+        }
         reject(new Error(`debugpy exited with code ${code} before connecting`))
       }
     })

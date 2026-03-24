@@ -13,7 +13,7 @@ function invoke(channel: IPCChannel, args?: unknown) {
   }).electronAPI
 
   return api?.invoke(channel, args)
-    .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
+    ?.catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 
 // ── Icons ─────────────────────────────────────────────────────────────────────

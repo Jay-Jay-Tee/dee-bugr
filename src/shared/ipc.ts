@@ -47,7 +47,10 @@ export const IPC = {
   AI_EXPLAIN:         'ai:explainBug',
   AI_FIX:             'ai:suggestFix',
   AI_EXPLAIN_VAR:     'ai:explainVariable',
+  AI_VAR_TOOLTIP:     'ai:variableTooltip',
+  AI_GENERATE_WATCHPOINT: 'ai:generateWatchpoint',
   AI_WATCHPOINT:      'ai:generateWatch',
+  AI_LOG_BREAKPOINTS: 'ai:logBreakpoints',
   AI_SUGGEST_BPS:     'ai:suggestBreakpoints',
   AI_NARRATIVE:       'ai:sessionNarrative',
 

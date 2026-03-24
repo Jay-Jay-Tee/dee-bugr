@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { Anomaly } from '../../shared/types'
+import AILogBreakpointsPanel from './AILogBreakpointsPanel'
 
 type Tab = 'ai' | 'fix' | 'asm' | 'graph'
 
@@ -150,7 +151,17 @@ function AIExplanationPanel() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="text-[#888] text-xs animate-pulse">Analyzing with Groq AI...</div>}
-        {error    && <div className="text-red-400 text-xs p-2 bg-red-900/20 rounded">⚠️ {error}</div>}
+        {error && (
+          <div className="text-xs p-2 bg-red-900/20 rounded border border-red-800/50">
+            <div className="text-red-400 mb-2">⚠️ {error}</div>
+            <button
+              onClick={fetchExplanation}
+              className="px-2 py-1 text-[10px] rounded bg-red-800/40 text-red-200 hover:bg-red-700/50"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {explanation && !loading && (
           <>
             {isBeginnerMode && <div className="text-[10px] text-[#569cd6] mb-2 uppercase tracking-wide">Beginner explanation</div>}
@@ -160,6 +171,8 @@ function AIExplanationPanel() {
         {!explanation && !loading && !error && (
           <div className="text-[#555] text-xs">Hit a breakpoint then click Explain Bug.</div>
         )}
+
+        <AILogBreakpointsPanel />
       </div>
     </div>
   )
@@ -228,7 +241,17 @@ function AIFixPanel() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="text-[#888] text-xs animate-pulse">Generating fix...</div>}
-        {error    && <div className="text-red-400 text-xs p-2 bg-red-900/20 rounded">⚠️ {error}</div>}
+        {error && (
+          <div className="text-xs p-2 bg-red-900/20 rounded border border-red-800/50">
+            <div className="text-red-400 mb-2">⚠️ {error}</div>
+            <button
+              onClick={fetchFix}
+              className="px-2 py-1 text-[10px] rounded bg-red-800/40 text-red-200 hover:bg-red-700/50"
+            >
+              Retry
+            </button>
+          </div>
+        )}
         {fix && !loading && (
           <>
             {fix.explanation && <div className="text-xs text-[#4ec9b0] mb-3 p-2 bg-[#2a2a2a] rounded">💡 {fix.explanation}</div>}

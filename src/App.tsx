@@ -8,8 +8,12 @@ import Toolbar from './components/panels/Toolbar'
 import MainLayout from './components/panels/MainLayout'
 
 function invoke(channel: IPCChannel, args?: unknown) {
-  return globalThis.electronAPI?.invoke(channel, args)
-    .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
+  const api = (window as Window & {
+    electronAPI?: { invoke: (ch: IPCChannel, payload?: unknown) => Promise<unknown> }
+  }).electronAPI
+
+  return api?.invoke(channel, args)
+    ?.catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 
 export default function App() {

@@ -11,12 +11,14 @@ interface OutputLine {
 interface DebugStore extends DebugState {
   outputLog: OutputLine[]
   isBeginnerMode: boolean
+  aiFixDiff: { originalCode: string; fixedCode: string; explanation: string } | null
 
   setState: (state: DebugState) => void
   setStatus: (status: DebugState['status']) => void
   setLanguage: (language: DebugState['language']) => void
   appendOutput: (text: string, category: string) => void
   toggleBeginnerMode: () => void
+  setAiFixDiff: (diff: { originalCode: string; fixedCode: string; explanation: string } | null) => void
   toggleBreakpoint: (file: string, line: number) => Promise<void>
   updateBreakpoint: (id: string, patch: Partial<Breakpoint>) => Promise<void>
   removeBreakpointById: (id: string) => Promise<void>
@@ -30,6 +32,7 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
   ...INITIAL_DEBUG_STATE,
   outputLog: [],
   isBeginnerMode: false,
+  aiFixDiff: null,
 
   setState: (newState) =>
     set((prev) => ({ ...prev, ...newState })),
@@ -43,6 +46,8 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
 
   toggleBeginnerMode: () =>
     set((prev) => ({ isBeginnerMode: !prev.isBeginnerMode })),
+
+  setAiFixDiff: (diff) => set({ aiFixDiff: diff }),
 
   toggleBreakpoint: async (file, line) => {
     const existing = get().breakpoints.find(
