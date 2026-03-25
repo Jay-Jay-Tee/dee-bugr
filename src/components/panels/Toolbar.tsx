@@ -166,19 +166,12 @@ function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStep
 
 // ── AI buttons ────────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-function AIButtons({ isPaused }: {readonly isPaused: boolean }) {
-  const handleExplain = useCallback(() => {
-    // Dispatch a custom event that RightPanel listens for (or just invoke IPC directly)
-    globalThis.dispatchEvent(new CustomEvent('lucid:ai-explain'))
-=======
 function AIButtons({ isPaused, sourceLines, language }: { isPaused: boolean; sourceLines?: string[]; language: Language }) {
   const [narrativeLoading, setNarrativeLoading] = useState(false)
   const [narrative, setNarrative] = useState('')
 
   const handleExplain = useCallback(() => {
     window.dispatchEvent(new CustomEvent('lucid:ai-explain'))
->>>>>>> 9e3b12f5387ffaf5effc0624818168330c341530
   }, [])
 
   const handleFix = useCallback(() => {
