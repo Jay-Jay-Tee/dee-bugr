@@ -1,5 +1,8 @@
 // src/components/panels/CodeEditor.tsx
-// FIX: guard breakpoint click — don't set breakpoints on empty/mock file path
+// ADDITIONS:
+//   - Ghost BP overlay: listens to lucid:ai-suggest-bps, renders in gutter
+//   - F9 / lucid:toggle-bp-at-cursor: toggles BP at cursor position
+//   - lucid:cinema-step: scrolls editor to the step's line during Cinema replay
 
 import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
@@ -90,6 +93,7 @@ export default function CodeEditor() {
   const cursorCollectionRef    = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const overlayCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const historyCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const ghostBPCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
   // ── Mount ─────────────────────────────────────────────────────────────────
   const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -99,6 +103,14 @@ export default function CodeEditor() {
     cursorCollectionRef.current  = editor.createDecorationsCollection([])
     overlayCollectionRef.current = editor.createDecorationsCollection([])
     historyCollectionRef.current = editor.createDecorationsCollection([])
+    ghostBPCollectionRef.current = editor.createDecorationsCollection([])
+
+    // Track cursor line for Run-to-Cursor and F9
+    editor.onDidChangeCursorPosition((e) => {
+      window.dispatchEvent(
+        new CustomEvent('lucid:cursor-line', { detail: e.position.lineNumber })
+      )
+    })
 
     editor.onMouseDown((e) => {
       const isGutter =
@@ -110,13 +122,36 @@ export default function CodeEditor() {
       const { currentFile: file, toggleBreakpoint } = storeRef.current()
 
       // FIX: only set breakpoints when we have a real file path from a live session.
-      // Clicking the gutter before launch used to silently set BPs on the mock file.
       if (!file) {
         console.warn('[CodeEditor] No active file — launch a session before setting breakpoints')
         return
       }
 
       toggleBreakpoint(file, line)
+    })
+
+    // F9 / lucid:toggle-bp-at-cursor
+    const toggleAtCursor = () => {
+      const pos  = editor.getPosition()
+      const line = pos?.lineNumber
+      if (!line) return
+      const { currentFile: file, toggleBreakpoint } = storeRef.current()
+      if (!file) return
+      toggleBreakpoint(file, line)
+    }
+    window.addEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
+
+    // Cinema step: scroll editor to the replayed line
+    const cinemaStep = (e: Event) => {
+      const { line } = (e as CustomEvent<{ file: string; line: number }>).detail
+      if (line) editor.revealLineInCenterIfOutsideViewport(line, 1)
+    }
+    window.addEventListener('lucid:cinema-step', cinemaStep)
+
+    // Cleanup listeners when editor is disposed
+    editor.onDidDispose(() => {
+      window.removeEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
+      window.removeEventListener('lucid:cinema-step', cinemaStep)
     })
   }, [])
 
@@ -228,7 +263,33 @@ export default function CodeEditor() {
     )
   }, [executionHistory, currentLine, currentFile])
 
-  // ── Language sync ─────────────────────────────────────────────────────────
+  // ── Ghost BP suggestions (AI: suggest breakpoints) ────────────────────────
+  useEffect(() => {
+    const monaco = monacoRef.current
+    const col    = ghostBPCollectionRef.current
+    if (!monaco || !col) return
+
+    const handler = (e: Event) => {
+      const suggestions = (e as CustomEvent<Array<{ line: number; reason: string }>>) .detail
+      if (!suggestions || suggestions.length === 0) { col.set([]); return }
+
+      col.set(suggestions.map((s) => ({
+        range: new monaco.Range(s.line, 1, s.line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: 'lucid-ghost-bp-glyph',
+          glyphMarginHoverMessage: { value: `💡 AI suggests: ${s.reason}` },
+          className: 'lucid-ghost-bp-line',
+        },
+      })))
+
+      // Auto-clear ghost BPs after 30 seconds so they don't linger
+      setTimeout(() => col.set([]), 30_000)
+    }
+
+    window.addEventListener('lucid:ai-suggest-bps', handler)
+    return () => window.removeEventListener('lucid:ai-suggest-bps', handler)
+  }, [])
   useEffect(() => {
     const editor = editorRef.current
     const monaco = monacoRef.current

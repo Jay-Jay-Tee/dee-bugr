@@ -115,6 +115,12 @@ function runFastAnomalyChecks(
 
 // ── SessionManager ────────────────────────────────────────────────────────────
 
+interface LaunchArgs {
+  language: Language
+  target: string
+  breakpoints: number[]
+}
+
 export class SessionManager {
   private client: DAPClient         = new DAPClient()
   private bpManager: BreakpointManager
@@ -129,6 +135,7 @@ export class SessionManager {
   private runToCursorBP: { file: string; line: number } | null = null
   // FIX 4: track last stepping command to know when to capture return value
   private lastStepCommand: 'stepOver' | 'stepIn' | 'stepOut' | 'continue' | 'other' = 'other'
+  private lastLaunchArgs: LaunchArgs | null = null
 
   constructor() {
     this.bpManager = new BreakpointManager(this.client)
@@ -222,6 +229,9 @@ export class SessionManager {
 
     console.log(`[Session] Launching ${language} → ${scriptPath}`)
 
+    // FIX 6: save for restart
+    this.lastLaunchArgs = { language, target: scriptPath, breakpoints: breakpointLines }
+
     let port: number
 
     if (language === 'python') {
@@ -297,8 +307,12 @@ export class SessionManager {
     this.state.status = 'running'
   }
 
-  // ── Breakpoints ───────────────────────────────────────────────────────────
+  // FIX 6: exposed for RESTART handler
+  getLastLaunchArgs(): LaunchArgs | null {
+    return this.lastLaunchArgs
+  }
 
+  // ── Breakpoints ───────────────────────────────────────────────────────────
   async setBreakpoint(file: string, line: number, opts?: {
     condition?: string
     hitCount?: number
@@ -561,8 +575,9 @@ export class SessionManager {
         throw new Error('No goto targets returned for this line')
       }
     } catch (err) {
-      console.error('[Session] gotoLine failed (adapter may not support gotoTargets):', err)
-      throw err
+      // Fallback: set a temp breakpoint and continue (works on all adapters)
+      console.warn('[Session] gotoTargets failed, falling back to temp breakpoint:', err)
+      await this.runToCursor(file, line)
     }
   }
 

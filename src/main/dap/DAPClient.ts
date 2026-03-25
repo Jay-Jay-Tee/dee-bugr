@@ -255,7 +255,8 @@ export class DAPClient extends EventEmitter {
   async variables(variablesReference: number) {
     return this.request('variables', {
       variablesReference,
-      filter: 'named',
+      // Do NOT pass filter:'named' — it skips indexed items (array elements)
+      // Omitting filter returns both named and indexed children correctly
     });
   }
 

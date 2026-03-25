@@ -47,7 +47,18 @@ export function registerAllHandlers() {
   })
 
   ipcMain.handle(IPC.RESTART, async () => {
+    const args = session.getLastLaunchArgs()
     await session.terminate()
+    if (args) {
+      try {
+        await session.launch(args.language, args.target, args.breakpoints)
+        return { success: true }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[IPC] RESTART re-launch failed:', msg)
+        return { success: false, error: msg }
+      }
+    }
     return { success: true }
   })
 
@@ -180,6 +191,10 @@ export function registerAllHandlers() {
 
   ipcMain.handle(IPC.GET_VARIABLES, async (_, args: { variablesReference: number }) =>
     session.fetchVariables(args.variablesReference))
+
+  // Missing handlers for GET_STACK and GET_SCOPES — renderer can call these directly
+  ipcMain.handle(IPC.GET_STACK, async () => session.getState().stackFrames)
+  ipcMain.handle(IPC.GET_SCOPES, async () => session.getState().scopes)
 
   ipcMain.handle(IPC.EVALUATE, async (_, args: { expr: string }) =>
     session.evaluate(args.expr))
