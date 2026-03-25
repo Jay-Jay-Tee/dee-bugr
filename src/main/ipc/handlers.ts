@@ -1,3 +1,5 @@
+// src/main/ipc/handlers.ts
+
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/ipc'
 import { session } from '../session/sessionManager'
@@ -91,7 +93,17 @@ export function registerAllHandlers() {
     }
   })
 
-  ipcMain.handle(IPC.READ_MEMORY,  async (_, args: { memoryReference: string; count?: number }) =>
+  // Bug 10 fix: SWITCH_THREAD was never registered
+  ipcMain.handle(IPC.SWITCH_THREAD, async (_, args: { threadId: number }) => {
+    try {
+      return await session.switchThread(args.threadId)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.READ_MEMORY, async (_, args: { memoryReference: string; count?: number }) =>
     session.readMemory(args.memoryReference, args.count))
 
   ipcMain.handle(IPC.DISASSEMBLE, async (_, args: { memoryReference: string; count?: number }) =>
@@ -99,21 +111,67 @@ export function registerAllHandlers() {
 
   ipcMain.handle(IPC.GET_DEBUG_CONTEXT, () => session.getDebugContext())
 
-  // ── ADVANCED FLOW (stubs — Day 5+) ────────────────────────
+  // ── ADVANCED FLOW — Day 5 ─────────────────────────────────
 
-  const notYet = (day: number) => async () => ({ success: false, error: `Not implemented until Day ${day}` })
+  ipcMain.handle(IPC.GOTO_LINE, async (_, args: { file: string; line: number }) => {
+    try {
+      await session.gotoLine(args.file, args.line)
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
 
-  ipcMain.handle(IPC.GOTO_LINE,    notYet(5))
-  ipcMain.handle(IPC.RETURN_NOW,   notYet(5))
-  ipcMain.handle(IPC.DROP_FRAME,   notYet(5))
-  ipcMain.handle(IPC.JUMP_TO_STEP, notYet(5))
+  ipcMain.handle(IPC.RUN_TO_CURSOR, async (_, args: { file: string; line: number }) => {
+    try {
+      await session.runToCursor(args.file, args.line)
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.RETURN_NOW, async (_, args?: { value?: string }) => {
+    try {
+      await session.returnNow(args?.value)
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.DROP_FRAME, async () => {
+    try {
+      await session.dropFrame()
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
+
+  ipcMain.handle(IPC.JUMP_TO_STEP, async (_, args: { step: number }) => {
+    try {
+      await session.jumpToHistoryStep(args.step)
+      return { success: true }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      return { success: false, error: msg }
+    }
+  })
 
   // ── BREAKPOINT VARIANTS (stubs — Day 6+) ─────────────────
 
-  ipcMain.handle(IPC.SET_METHOD_BP,   notYet(6))
-  ipcMain.handle(IPC.SET_FIELD_WATCH, notYet(6))
+  const notYet = (day: number) => async () =>
+    ({ success: false, error: `Not implemented until Day ${day}` })
+
+  ipcMain.handle(IPC.SET_METHOD_BP,    notYet(6))
+  ipcMain.handle(IPC.SET_FIELD_WATCH,  notYet(6))
   ipcMain.handle(IPC.SET_EXCEPTION_BP, notYet(6))
-  ipcMain.handle(IPC.TOGGLE_GROUP,    notYet(6))
+  ipcMain.handle(IPC.TOGGLE_GROUP,     notYet(6))
 
   console.log('[IPC] All handlers registered')
 }

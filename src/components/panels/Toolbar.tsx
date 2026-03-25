@@ -1,5 +1,4 @@
 // src/components/panels/Toolbar.tsx
-// Day 3: step buttons and launch/stop now invoke real IPC channels.
 
 import { useCallback } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
@@ -36,6 +35,10 @@ function ContinueIcon() {
 }
 function PauseIcon() {
   return <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="4" height="10" rx="1" /><rect x="8" y="2" width="4" height="10" rx="1" /></svg>
+}
+// Day 5: Run to Cursor icon — arrow pointing to a horizontal line
+function RunToCursorIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="2" y1="11" x2="12" y2="11" /><line x1="7" y1="2" x2="7" y2="9" /><polyline points="4,7 7,10 10,7" /></svg>
 }
 
 // ── Toolbar button ────────────────────────────────────────────────────────────
@@ -138,7 +141,7 @@ function StatusIndicator({ status }: { readonly status: string }) {
 function LaunchStopBtn({ isActive, onLaunch, onStop }: {
   isActive: boolean
   onLaunch: () => void
-  onStop: () => void
+  onStop:   () => void
 }) {
   return isActive
     ? <ToolbarBtn title="Stop (Shift+F5)"      onClick={onStop}   variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
@@ -148,23 +151,28 @@ function LaunchStopBtn({ isActive, onLaunch, onStop }: {
 // ── Step controls ─────────────────────────────────────────────────────────────
 
 interface StepControlsProps {
-  isPaused: boolean
-  isRunning: boolean
-  onContinue: () => void
-  onPause: () => void
-  onNext: () => void
-  onStepIn: () => void
-  onStepOut: () => void
+  isPaused:   boolean
+  isRunning:  boolean
+  onContinue:     () => void
+  onPause:        () => void
+  onNext:         () => void
+  onStepIn:       () => void
+  onStepOut:      () => void
+  onRunToCursor:  () => void   // Day 5
 }
 
-function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStepIn, onStepOut }: Readonly<StepControlsProps>) {
+function StepControls({
+  isPaused, isRunning,
+  onContinue, onPause, onNext, onStepIn, onStepOut, onRunToCursor,
+}: Readonly<StepControlsProps>) {
   return (
     <>
-      <ToolbarBtn title="Continue (F5)"        onClick={onContinue} disabled={!isPaused}><ContinueIcon /></ToolbarBtn>
-      <ToolbarBtn title="Pause"                onClick={onPause}    disabled={!isRunning}><PauseIcon /></ToolbarBtn>
-      <ToolbarBtn title="Step Over (F10)"      onClick={onNext}     disabled={!isPaused}><StepOverIcon /></ToolbarBtn>
-      <ToolbarBtn title="Step Into (F11)"      onClick={onStepIn}   disabled={!isPaused}><StepInIcon /></ToolbarBtn>
-      <ToolbarBtn title="Step Out (Shift+F11)" onClick={onStepOut}  disabled={!isPaused}><StepOutIcon /></ToolbarBtn>
+      <ToolbarBtn title="Continue (F5)"              onClick={onContinue}    disabled={!isPaused}><ContinueIcon /></ToolbarBtn>
+      <ToolbarBtn title="Pause"                      onClick={onPause}       disabled={!isRunning}><PauseIcon /></ToolbarBtn>
+      <ToolbarBtn title="Step Over (F10)"            onClick={onNext}        disabled={!isPaused}><StepOverIcon /></ToolbarBtn>
+      <ToolbarBtn title="Step Into (F11)"            onClick={onStepIn}      disabled={!isPaused}><StepInIcon /></ToolbarBtn>
+      <ToolbarBtn title="Step Out (Shift+F11)"       onClick={onStepOut}     disabled={!isPaused}><StepOutIcon /></ToolbarBtn>
+      <ToolbarBtn title="Run to Cursor (Ctrl+F10)"   onClick={onRunToCursor} disabled={!isPaused}><RunToCursorIcon /></ToolbarBtn>
     </>
   )
 }
@@ -183,26 +191,31 @@ function AIButtons() {
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
 export default function Toolbar() {
-  const status    = useDebugStore((s) => s.status)
-  const language  = useDebugStore((s) => s.language)
+  const status      = useDebugStore((s) => s.status)
+  const language    = useDebugStore((s) => s.language)
   const currentFile = useDebugStore((s) => s.currentFile)
-  const isRunning = status === 'running' || status === 'launching'
-  const isPaused  = status === 'paused'
+  const currentLine = useDebugStore((s) => s.currentLine)
+  const isRunning   = status === 'running' || status === 'launching'
+  const isPaused    = status === 'paused'
 
-  const handleLaunch   = useCallback(() => {
-    // Passes current language + open file. In full implementation a file-picker
-    // dialog would be shown here. For now target = currentFile or a prompt.
+  const handleLaunch = useCallback(() => {
     const target = currentFile || prompt('Path to script to debug:') || ''
     if (!target) return
     invoke(IPC.LAUNCH, { language, target })
   }, [language, currentFile])
 
-  const handleStop     = useCallback(() => invoke(IPC.TERMINATE), [])
-  const handleContinue = useCallback(() => invoke(IPC.CONTINUE), [])
-  const handlePause    = useCallback(() => invoke(IPC.PAUSE), [])
-  const handleNext     = useCallback(() => invoke(IPC.NEXT), [])
-  const handleStepIn   = useCallback(() => invoke(IPC.STEP_IN), [])
-  const handleStepOut  = useCallback(() => invoke(IPC.STEP_OUT), [])
+  const handleStop         = useCallback(() => invoke(IPC.TERMINATE), [])
+  const handleContinue     = useCallback(() => invoke(IPC.CONTINUE), [])
+  const handlePause        = useCallback(() => invoke(IPC.PAUSE), [])
+  const handleNext         = useCallback(() => invoke(IPC.NEXT), [])
+  const handleStepIn       = useCallback(() => invoke(IPC.STEP_IN), [])
+  const handleStepOut      = useCallback(() => invoke(IPC.STEP_OUT), [])
+
+  // Day 5: Run to Cursor — uses current file + line from store
+  const handleRunToCursor = useCallback(() => {
+    if (!currentFile || !currentLine) return
+    invoke(IPC.RUN_TO_CURSOR, { file: currentFile, line: currentLine })
+  }, [currentFile, currentLine])
 
   return (
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
@@ -218,6 +231,7 @@ export default function Toolbar() {
         onNext={handleNext}
         onStepIn={handleStepIn}
         onStepOut={handleStepOut}
+        onRunToCursor={handleRunToCursor}
       />
       <Divider />
       <AIButtons />

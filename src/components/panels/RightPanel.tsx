@@ -1,14 +1,17 @@
-// src/components/RightPanel.tsx
-// Placeholder shell — Day 4 P4 delivers AI explanation panel to slot in here.
+// src/components/panels/RightPanel.tsx
 
 import { useState } from 'react'
+import DebugCinema from './DebugCinema'
 
-type Tab = 'ai' | 'fix' | 'graph'
+// Bug 9 fix: DebugCinema was written but never mounted anywhere.
+// Day 4: Cinema tab added here. AI / Fix panels remain stubs until P4 delivers.
+
+type Tab = 'ai' | 'fix' | 'cinema'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'ai',    label: 'AI' },
-  { id: 'fix',   label: 'Fix' },
-  { id: 'graph', label: 'Graph' },
+  { id: 'ai',     label: 'AI'     },
+  { id: 'fix',    label: 'Fix'    },
+  { id: 'cinema', label: '🎬 Cinema' },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -46,9 +49,11 @@ export default function RightPanel() {
   return (
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-l border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
-      {activeTab === 'ai'    && <Placeholder label="AI explanation — wired Day 4" />}
-      {activeTab === 'fix'   && <Placeholder label="Fix diff — wired Day 5" />}
-      {activeTab === 'graph' && <Placeholder label="Object graph — wired Day 6" />}
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {activeTab === 'ai'     && <Placeholder label="AI explanation — wired Day 4 (P4 delivers component)" />}
+        {activeTab === 'fix'    && <Placeholder label="Fix diff — wired Day 5" />}
+        {activeTab === 'cinema' && <DebugCinema />}
+      </div>
     </div>
   )
 }

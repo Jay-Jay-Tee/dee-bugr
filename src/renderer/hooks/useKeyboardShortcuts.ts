@@ -1,22 +1,34 @@
 // src/renderer/hooks/useKeyboardShortcuts.ts
-// Standard debugger keyboard shortcuts — wired to IPC.
-// Mount this once in App.tsx or MainLayout.tsx.
+// Standard debugger keyboard shortcuts wired to IPC.
+// Mount once via App.tsx — replaces the inline useEffect that was there.
 //
-// F5        = Continue
-// F9        = Toggle breakpoint at current cursor line (dispatched via custom event)
-// F10       = Step Over
-// F11       = Step Into
-// Shift+F11 = Step Out
-// Shift+F5  = Stop / Terminate
+// F5              = Continue (when paused) / Launch (when idle)
+// Shift+F5        = Terminate
+// F9              = Toggle breakpoint at current line
+// F10             = Step Over
+// F11             = Step Into
+// Shift+F11       = Step Out
+// Ctrl+F10        = Run to Cursor (Day 5)
 
 import { useEffect } from 'react'
 import { useDebugStore } from '../store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
 
+type ElectronWindow = Window & {
+  electronAPI?: { invoke: (ch: IPCChannel, args?: unknown) => Promise<unknown> }
+}
+
 function invoke(channel: IPCChannel, args?: unknown) {
-  return globalThis.electronAPI?.invoke(channel, args)
+  return (window as ElectronWindow).electronAPI?.invoke(channel, args)
     .catch((err: unknown) => console.error(`[Shortcut] ${channel} failed:`, err))
+}
+
+// Bug 5 fix: F9 reads fresh store state — no stale closure.
+// Defined at module level, not inside a hook, to avoid invalid hook call.
+function handleF9() {
+  const { currentFile, currentLine, toggleBreakpoint } = useDebugStore.getState()
+  if (currentFile && currentLine) toggleBreakpoint(currentFile, currentLine)
 }
 
 export function useKeyboardShortcuts() {
@@ -28,9 +40,8 @@ export function useKeyboardShortcuts() {
     const isActive  = isPaused || isRunning
 
     function handler(e: KeyboardEvent) {
-      // Don't fire shortcuts while user is typing in an input/textarea
       const tag = (e.target as HTMLElement)?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
 
       switch (true) {
         case e.key === 'F5' && !e.shiftKey:
@@ -45,14 +56,18 @@ export function useKeyboardShortcuts() {
 
         case e.key === 'F9':
           e.preventDefault()
-          // Dispatch a custom event — CodeEditor listens to it and toggles
-          // the breakpoint at the current Monaco cursor position
-          window.dispatchEvent(new CustomEvent('lucid:toggle-bp-at-cursor'))
+          handleF9()
           break
 
-        case e.key === 'F10':
+        case e.key === 'F10' && !e.ctrlKey:
           e.preventDefault()
           if (isPaused) invoke(IPC.NEXT)
+          break
+
+        // Day 5: Ctrl+F10 = Run to Cursor
+        case e.key === 'F10' && e.ctrlKey:
+          e.preventDefault()
+          if (isPaused) invoke(IPC.RUN_TO_CURSOR)
           break
 
         case e.key === 'F11' && !e.shiftKey:

@@ -16,6 +16,7 @@ export const IPC = {
 
   // ── ADVANCED FLOW ─────────────────────────────────────────
   GOTO_LINE:          'dap:gotoLine',
+  RUN_TO_CURSOR:      'dap:runToCursor',
   RETURN_NOW:         'dap:returnNow',
   DROP_FRAME:         'dap:dropFrame',
 
@@ -27,6 +28,7 @@ export const IPC = {
   SET_EXCEPTION_BP:   'dap:setExceptionBP',
   TOGGLE_GROUP:       'dap:toggleGroup',
   SWITCH_FRAME:       'dap:switchFrame',
+  SWITCH_THREAD:      'dap:switchThread',   // Bug 2 — was removed
 
   // ── INSPECTION ────────────────────────────────────────────
   GET_STACK:          'dap:stackTrace',

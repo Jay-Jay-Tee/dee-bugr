@@ -1,5 +1,7 @@
+// src/renderer/store/debugStore.ts
+
 import { create } from 'zustand'
-import { DebugState, INITIAL_DEBUG_STATE, Breakpoint } from '../../shared/types'
+import { DebugState, INITIAL_DEBUG_STATE, Breakpoint, Anomaly, ReturnValue } from '../../shared/types'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
 
@@ -22,8 +24,9 @@ interface DebugStore extends DebugState {
   removeBreakpointById: (id: string) => Promise<void>
 }
 
+// Bug 6 fix: optional chaining — will not throw if electronAPI isn't ready yet
 function invoke(channel: IPCChannel, args?: unknown): Promise<unknown> {
-  return globalThis.electronAPI.invoke(channel, args)
+  return globalThis.electronAPI?.invoke(channel, args) ?? Promise.resolve(undefined)
 }
 
 export const useDebugStore = create<DebugStore>((set, get) => ({
@@ -50,19 +53,16 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
     )
 
     if (existing) {
-      // Optimistic remove
       set((prev) => ({
         breakpoints: prev.breakpoints.filter((bp) => bp.id !== existing.id),
       }))
       try {
         await invoke(IPC.REMOVE_BREAKPOINT, { file, line })
       } catch (err) {
-        // Rollback on failure
         set((prev) => ({ breakpoints: [...prev.breakpoints, existing] }))
         console.error('Failed to remove breakpoint', err)
       }
     } else {
-      // Optimistic add — unverified until main side confirms
       const optimistic: Breakpoint = {
         id:       `bp-${file}-${line}`,
         file,
@@ -73,7 +73,6 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
       try {
         await invoke(IPC.SET_BREAKPOINT, { file, line })
       } catch (err) {
-        // Rollback on failure
         set((prev) => ({
           breakpoints: prev.breakpoints.filter((bp) => bp.id !== optimistic.id),
         }))
@@ -137,6 +136,18 @@ function isOutputLine(value: unknown): value is OutputLine {
   return typeof v['text'] === 'string' && typeof v['category'] === 'string'
 }
 
+function isAnomaly(value: unknown): value is Anomaly {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v['message'] === 'string' && typeof v['variable'] === 'string'
+}
+
+function isReturnValue(value: unknown): value is ReturnValue {
+  if (typeof value !== 'object' || value === null) return false
+  const v = value as Record<string, unknown>
+  return typeof v['fnName'] === 'string' && typeof v['value'] === 'string'
+}
+
 export function initIPCListeners() {
   if (listenersInitialized) return
   listenersInitialized = true
@@ -175,6 +186,28 @@ export function initIPCListeners() {
         }
       })
     )
+
+    // Bug 8 fix: restore anomaly listener
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_ANOMALY, (data: unknown) => {
+        if (!isAnomaly(data)) return
+        const store = useDebugStore.getState()
+        const existing = store.anomalies ?? []
+        if (!existing.some((a) => a.message === data.message)) {
+          store.setState({ ...store, anomalies: [...existing, data] })
+        }
+      })
+    )
+
+    // Bug 8 fix: restore return-value listener
+    unsubscribers.push(
+      globalThis.electronAPI.on(IPC.EVENT_RETURN_VAL, (data: unknown) => {
+        if (!isReturnValue(data)) return
+        const store = useDebugStore.getState()
+        store.setState({ ...store, lastReturnValue: data })
+      })
+    )
+
   } catch (error) {
     console.error('Failed to initialize IPC listeners:', error)
     listenersInitialized = false

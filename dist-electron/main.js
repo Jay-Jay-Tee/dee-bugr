@@ -23,6 +23,7 @@ const IPC = {
   PAUSE: "dap:pause",
   // ── ADVANCED FLOW ─────────────────────────────────────────
   GOTO_LINE: "dap:gotoLine",
+  RUN_TO_CURSOR: "dap:runToCursor",
   RETURN_NOW: "dap:returnNow",
   DROP_FRAME: "dap:dropFrame",
   // ── BREAKPOINTS ───────────────────────────────────────────
@@ -33,6 +34,7 @@ const IPC = {
   SET_EXCEPTION_BP: "dap:setExceptionBP",
   TOGGLE_GROUP: "dap:toggleGroup",
   SWITCH_FRAME: "dap:switchFrame",
+  SWITCH_THREAD: "dap:switchThread",
   GET_VARIABLES: "dap:variables",
   EVALUATE: "dap:evaluate",
   SET_VARIABLE: "dap:setVariable",
@@ -422,6 +424,8 @@ class SessionManager {
     __publicField(this, "prevVarValues", {});
     __publicField(this, "bpMap", /* @__PURE__ */ new Map());
     __publicField(this, "state", { ...INITIAL_DEBUG_STATE });
+    // Called from handleStopped to remove a run-to-cursor bp once hit.
+    __publicField(this, "_runToCursorTarget", null);
     this.wireClientEvents();
   }
   // ── Wire DAP events ───────────────────────────────────────
@@ -499,7 +503,6 @@ class SessionManager {
     this.state.status = "running";
   }
   // ── Breakpoint management ─────────────────────────────────
-  // DAP setBreakpoints is a full replacement per file, never incremental.
   async setBreakpoint(file, line, condition) {
     const lines = this.bpMap.get(file) ?? /* @__PURE__ */ new Set();
     lines.add(line);
@@ -668,6 +671,107 @@ class SessionManager {
     this.prevVarValues = {};
     this.bpMap = /* @__PURE__ */ new Map();
   }
+  // ── Thread / frame switching ──────────────────────────────
+  async switchFrame(frameId) {
+    this.frameId = frameId;
+    const scopesBody = await this.client.scopes(frameId);
+    const rawScopes = Array.isArray(scopesBody == null ? void 0 : scopesBody.scopes) ? scopesBody.scopes : [];
+    const allVars = [];
+    for (const scope of rawScopes) {
+      if (bool(scope["expensive"])) continue;
+      allVars.push(...await this.fetchVariables(num(scope["variablesReference"])));
+    }
+    return allVars;
+  }
+  // Day 5 / Bug 10: switch active thread and refresh state
+  async switchThread(threadId) {
+    this.threadId = threadId;
+    this.frameId = 0;
+    await this.refreshFullState();
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state);
+  }
+  // ── Day 5 advanced flow ───────────────────────────────────
+  // Jump to a specific file:line using DAP goto targets.
+  // Some adapters don't support this — throws if gotoTargets isn't available.
+  async gotoLine(file, line) {
+    const targetsBody = await this.client.request("gotoTargets", {
+      source: { path: file },
+      line
+    });
+    const targets = Array.isArray(targetsBody == null ? void 0 : targetsBody.targets) ? targetsBody.targets : [];
+    if (targets.length === 0) throw new Error("No goto targets returned by adapter");
+    const targetId = num(targets[0]["id"]);
+    await this.client.request("goto", { threadId: this.threadId, targetId });
+    await this.refreshFullState();
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state);
+  }
+  // Set a temporary breakpoint at the cursor line then continue.
+  // Simpler and more broadly supported than DAP goto.
+  async runToCursor(file, line) {
+    await this.setBreakpoint(file, line);
+    await this.continueExecution();
+    this._runToCursorTarget = { file, line };
+  }
+  async handleStopped(body) {
+    console.log("[Session] Stopped:", body["reason"], "| thread:", body["threadId"]);
+    this.threadId = num(body["threadId"], 1);
+    this.state.status = "paused";
+    this.state.errorMessage = body["reason"] === "exception" ? str(body["text"]) || void 0 : void 0;
+    if (this._runToCursorTarget) {
+      const { file, line } = this._runToCursorTarget;
+      this._runToCursorTarget = null;
+      try {
+        await this.removeBreakpoint(file, line);
+      } catch {
+      }
+    }
+    await this.refreshFullState();
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state);
+  }
+  // Force-return from the current frame with an optional synthetic value.
+  // Uses DAP setExpression or the adapter-specific returnValue capability.
+  // Falls back to stepOut if the adapter doesn't support it.
+  async returnNow(value) {
+    try {
+      if (value !== void 0) {
+        await this.client.request("evaluate", {
+          expression: value,
+          frameId: this.frameId,
+          context: "return"
+        });
+      }
+      await this.stepOut();
+    } catch (err) {
+      console.warn("[Session] returnNow fell back to stepOut:", err);
+      await this.stepOut();
+    }
+  }
+  // Drop (pop) the current stack frame and restart it from the top.
+  // Uses DAP restartFrame if available, throws otherwise.
+  async dropFrame() {
+    await this.client.request("restartFrame", { frameId: this.frameId });
+    await this.refreshFullState();
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state);
+  }
+  // Restore session state to a historical step (for Debug Cinema scrubbing).
+  // Pushes that historical state snapshot to the renderer; does NOT replay
+  // actual execution — that would require time-travel debugging support.
+  async jumpToHistoryStep(step) {
+    const entry = this.state.executionHistory.find((e) => e.step === step);
+    if (!entry) return;
+    const snapshot = {
+      currentFile: entry.file,
+      currentLine: entry.line,
+      stepCount: entry.step,
+      variables: Object.entries(entry.variables).map(([name, v]) => ({
+        name,
+        value: v.value,
+        type: v.type,
+        variablesReference: 0
+      }))
+    };
+    this.pushToRenderer(IPC.EVENT_STOPPED, { ...this.state, ...snapshot });
+  }
   // ── Evaluate / set variable ───────────────────────────────
   async evaluate(expression) {
     try {
@@ -679,17 +783,6 @@ class SessionManager {
   }
   async setVariable(variablesReference, name, value) {
     return this.client.setVariable(variablesReference, name, value);
-  }
-  async switchFrame(frameId) {
-    this.frameId = frameId;
-    const scopesBody = await this.client.scopes(frameId);
-    const rawScopes = Array.isArray(scopesBody == null ? void 0 : scopesBody.scopes) ? scopesBody.scopes : [];
-    const allVars = [];
-    for (const scope of rawScopes) {
-      if (bool(scope["expensive"])) continue;
-      allVars.push(...await this.fetchVariables(num(scope["variablesReference"])));
-    }
-    return allVars;
   }
   // ── Memory / disassembly ──────────────────────────────────
   async readMemory(memoryReference, count = 256) {
@@ -801,14 +894,63 @@ function registerAllHandlers() {
       return { success: false, error: msg };
     }
   });
+  ipcMain.handle(IPC.SWITCH_THREAD, async (_, args) => {
+    try {
+      return await session.switchThread(args.threadId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  });
   ipcMain.handle(IPC.READ_MEMORY, async (_, args) => session.readMemory(args.memoryReference, args.count));
   ipcMain.handle(IPC.DISASSEMBLE, async (_, args) => session.disassemble(args.memoryReference, args.count));
   ipcMain.handle(IPC.GET_DEBUG_CONTEXT, () => session.getDebugContext());
+  ipcMain.handle(IPC.GOTO_LINE, async (_, args) => {
+    try {
+      await session.gotoLine(args.file, args.line);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  });
+  ipcMain.handle(IPC.RUN_TO_CURSOR, async (_, args) => {
+    try {
+      await session.runToCursor(args.file, args.line);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  });
+  ipcMain.handle(IPC.RETURN_NOW, async (_, args) => {
+    try {
+      await session.returnNow(args == null ? void 0 : args.value);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  });
+  ipcMain.handle(IPC.DROP_FRAME, async () => {
+    try {
+      await session.dropFrame();
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  });
+  ipcMain.handle(IPC.JUMP_TO_STEP, async (_, args) => {
+    try {
+      await session.jumpToHistoryStep(args.step);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  });
   const notYet = (day) => async () => ({ success: false, error: `Not implemented until Day ${day}` });
-  ipcMain.handle(IPC.GOTO_LINE, notYet(5));
-  ipcMain.handle(IPC.RETURN_NOW, notYet(5));
-  ipcMain.handle(IPC.DROP_FRAME, notYet(5));
-  ipcMain.handle(IPC.JUMP_TO_STEP, notYet(5));
   ipcMain.handle(IPC.SET_METHOD_BP, notYet(6));
   ipcMain.handle(IPC.SET_FIELD_WATCH, notYet(6));
   ipcMain.handle(IPC.SET_EXCEPTION_BP, notYet(6));

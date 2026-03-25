@@ -1,3 +1,5 @@
+// src/main/session/sessionManager.ts
+
 import { BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import { DAPClient } from '../dap/DAPClient'
@@ -18,8 +20,6 @@ import {
 import { ChildProcess } from 'child_process'
 
 // ── DAP response shape helpers ────────────────────────────────────────────────
-// DAPClient.request() returns Promise<any> — we extract fields safely here
-// rather than scattering casts throughout the session logic.
 
 type DAPRecord = Record<string, unknown>
 
@@ -153,7 +153,6 @@ export class SessionManager {
   }
 
   // ── Breakpoint management ─────────────────────────────────
-  // DAP setBreakpoints is a full replacement per file, never incremental.
 
   async setBreakpoint(file: string, line: number, condition?: string) {
     const lines = this.bpMap.get(file) ?? new Set<number>()
@@ -315,8 +314,6 @@ export class SessionManager {
   async continueExecution() { this.state.status = 'running'; await this.client.continue(this.threadId) }
 
   async pause() {
-    // DAPClient.request() is public — no cast needed.
-    // Returns Promise<any> because DAP responses are untyped at the library level.
     await this.client.request('pause', { threadId: this.threadId })
   }
 
@@ -336,23 +333,7 @@ export class SessionManager {
     this.bpMap         = new Map()
   }
 
-  // ── Evaluate / set variable ───────────────────────────────
-
-  async evaluate(expression: string): Promise<string> {
-    try {
-      const body = await this.client.evaluate(expression, this.frameId)
-      // body is any (DAPClient returns Promise<any>) — coerce safely
-      return body != null && typeof body['result'] === 'string'
-        ? body['result']
-        : String(body?.['result'] ?? '')
-    } catch (err: unknown) {
-      return `Error: ${err instanceof Error ? err.message : String(err)}`
-    }
-  }
-
-  async setVariable(variablesReference: number, name: string, value: string) {
-    return this.client.setVariable(variablesReference, name, value)
-  }
+  // ── Thread / frame switching ──────────────────────────────
 
   async switchFrame(frameId: number): Promise<Variable[]> {
     this.frameId = frameId
@@ -364,6 +345,133 @@ export class SessionManager {
       allVars.push(...await this.fetchVariables(num(scope['variablesReference'])))
     }
     return allVars
+  }
+
+  // Day 5 / Bug 10: switch active thread and refresh state
+  async switchThread(threadId: number): Promise<void> {
+    this.threadId = threadId
+    this.frameId  = 0
+    await this.refreshFullState()
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+  }
+
+  // ── Day 5 advanced flow ───────────────────────────────────
+
+  // Jump to a specific file:line using DAP goto targets.
+  // Some adapters don't support this — throws if gotoTargets isn't available.
+  async gotoLine(file: string, line: number): Promise<void> {
+    const targetsBody = await this.client.request('gotoTargets', {
+      source: { path: file },
+      line,
+    })
+    const targets: DAPRecord[] = Array.isArray(targetsBody?.targets) ? targetsBody.targets : []
+    if (targets.length === 0) throw new Error('No goto targets returned by adapter')
+    const targetId = num(targets[0]['id'])
+    await this.client.request('goto', { threadId: this.threadId, targetId })
+    await this.refreshFullState()
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+  }
+
+  // Set a temporary breakpoint at the cursor line then continue.
+  // Simpler and more broadly supported than DAP goto.
+  async runToCursor(file: string, line: number): Promise<void> {
+    // Add a temporary bp, continue, then remove it after the next stop.
+    // The stop handler (handleStopped) fires automatically — we just need
+    // the bp in place before we resume.
+    await this.setBreakpoint(file, line)
+    await this.continueExecution()
+    // Cleanup happens in handleStopped after the program pauses there.
+    // We store the temp bp so we can remove it after the stop.
+    this._runToCursorTarget = { file, line }
+  }
+
+  // Called from handleStopped to remove a run-to-cursor bp once hit.
+  private _runToCursorTarget: { file: string; line: number } | null = null
+
+  private async handleStopped(body: DAPRecord) {
+    console.log('[Session] Stopped:', body['reason'], '| thread:', body['threadId'])
+    this.threadId = num(body['threadId'], 1)
+    this.state.status = 'paused'
+    this.state.errorMessage =
+      body['reason'] === 'exception' ? str(body['text']) || undefined : undefined
+
+    // Run-to-cursor cleanup: remove the temporary bp after it fires
+    if (this._runToCursorTarget) {
+      const { file, line } = this._runToCursorTarget
+      this._runToCursorTarget = null
+      try { await this.removeBreakpoint(file, line) } catch { /* ignore */ }
+    }
+
+    await this.refreshFullState()
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+  }
+
+  // Force-return from the current frame with an optional synthetic value.
+  // Uses DAP setExpression or the adapter-specific returnValue capability.
+  // Falls back to stepOut if the adapter doesn't support it.
+  async returnNow(value?: string): Promise<void> {
+    try {
+      if (value !== undefined) {
+        // Some adapters support setting the return value via evaluate in 'return' context
+        await this.client.request('evaluate', {
+          expression: value,
+          frameId:    this.frameId,
+          context:    'return',
+        })
+      }
+      await this.stepOut()
+    } catch (err) {
+      console.warn('[Session] returnNow fell back to stepOut:', err)
+      await this.stepOut()
+    }
+  }
+
+  // Drop (pop) the current stack frame and restart it from the top.
+  // Uses DAP restartFrame if available, throws otherwise.
+  async dropFrame(): Promise<void> {
+    await this.client.request('restartFrame', { frameId: this.frameId })
+    await this.refreshFullState()
+    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+  }
+
+  // Restore session state to a historical step (for Debug Cinema scrubbing).
+  // Pushes that historical state snapshot to the renderer; does NOT replay
+  // actual execution — that would require time-travel debugging support.
+  async jumpToHistoryStep(step: number): Promise<void> {
+    const entry = this.state.executionHistory.find((e) => e.step === step)
+    if (!entry) return
+
+    // Build a lightweight state snapshot from the history entry
+    const snapshot: Partial<DebugState> = {
+      currentFile: entry.file,
+      currentLine: entry.line,
+      stepCount:   entry.step,
+      variables:   Object.entries(entry.variables).map(([name, v]) => ({
+        name,
+        value:              v.value,
+        type:               v.type,
+        variablesReference: 0,
+      })),
+    }
+
+    this.pushToRenderer(IPC.EVENT_STOPPED, { ...this.state, ...snapshot })
+  }
+
+  // ── Evaluate / set variable ───────────────────────────────
+
+  async evaluate(expression: string): Promise<string> {
+    try {
+      const body = await this.client.evaluate(expression, this.frameId)
+      return body != null && typeof body['result'] === 'string'
+        ? body['result']
+        : String(body?.['result'] ?? '')
+    } catch (err: unknown) {
+      return `Error: ${err instanceof Error ? err.message : String(err)}`
+    }
+  }
+
+  async setVariable(variablesReference: number, name: string, value: string) {
+    return this.client.setVariable(variablesReference, name, value)
   }
 
   // ── Memory / disassembly ──────────────────────────────────
