@@ -8,7 +8,7 @@
 //   - "Jump to step" emits an IPC call so the editor cursor follows along
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { HistoryEntry } from '../../shared/types'
@@ -30,15 +30,15 @@ interface CinemaStep {
 
 function toSteps(history: HistoryEntry[]): CinemaStep[] {
   return history.map((entry) => ({
-    step:    entry.step,
-    file:    entry.file,
-    line:    entry.line,
+    step: entry.step,
+    file: entry.file,
+    line: entry.line,
     changed: Object.entries(entry.variables)
       .filter(([, v]) => v.changed)
       .map(([name]) => name),
     vars: Object.entries(entry.variables).map(([name, v]) => ({
       name,
-      value:   v.value,
+      value: v.value,
       changed: v.changed,
     })),
   }))
@@ -46,7 +46,7 @@ function toSteps(history: HistoryEntry[]): CinemaStep[] {
 
 export default function DebugCinema() {
   const history = useDebugStore((s) => s.executionHistory)
-  const steps   = toSteps(history)
+  const steps = useMemo(() => toSteps(history), [history])
 
   const [current, setCurrent] = useState(0)
   const [playing, setPlaying] = useState(false)

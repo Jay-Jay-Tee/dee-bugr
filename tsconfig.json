@@ -26,9 +26,8 @@
   },
 
   "include": [
-    "src/renderer",
-    "src/shared",
-    "src/renderer/global.d.ts"
+    "src/**/*",
+    "electron"
   ],
 
   "references": [

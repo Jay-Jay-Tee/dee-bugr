@@ -43,6 +43,7 @@ export interface Breakpoint {
   file: string;
   line: number;
   verified: boolean;
+  enabled?: boolean;                // explicit toggle; undefined = true
   condition?: string;
   hitCount?: number;
   hitCountRemaining?: number;  // auto-disable after N hits

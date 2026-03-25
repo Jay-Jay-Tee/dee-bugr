@@ -1,7 +1,7 @@
 // src/main/session/sessionManager.ts
 
 import { BrowserWindow } from 'electron'
-import * as fs from 'fs'
+import * as fs from 'node:fs'
 import { DAPClient } from '../dap/DAPClient'
 import { launchPythonAdapter } from '../dap/adapters/python'
 import { launchJSAdapter } from '../dap/adapters/javascript'
@@ -70,16 +70,6 @@ export class SessionManager {
     this.client.on('event:output',     this.handleOutput.bind(this))
     this.client.on('event:terminated', this.handleTerminated.bind(this))
     this.client.on('event:exited',     this.handleExited.bind(this))
-  }
-
-  private async handleStopped(body: DAPRecord) {
-    console.log('[Session] Stopped:', body['reason'], '| thread:', body['threadId'])
-    this.threadId = num(body['threadId'], 1)
-    this.state.status = 'paused'
-    this.state.errorMessage =
-      body['reason'] === 'exception' ? str(body['text']) || undefined : undefined
-    await this.refreshFullState()
-    this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
   }
 
   private handleContinued() {
@@ -267,14 +257,14 @@ export class SessionManager {
       const body = await this.client.variables(variablesReference)
       const raw: unknown[] = Array.isArray(body?.variables) ? body.variables : []
       return raw.filter(isVariable).map((v): Variable => {
-        const hint = rec((v as DAPRecord)['presentationHint'])
+        const hint = rec((v as unknown as DAPRecord)['presentationHint'])
         return {
-          name:               str((v as DAPRecord)['name']),
-          value:              str((v as DAPRecord)['value']),
-          type:               str((v as DAPRecord)['type'], 'unknown'),
-          variablesReference: num((v as DAPRecord)['variablesReference']),
-          memoryReference:    typeof (v as DAPRecord)['memoryReference'] === 'string'
-                                ? str((v as DAPRecord)['memoryReference'])
+          name:               str((v as unknown as DAPRecord)['name']),
+          value:              str((v as unknown as DAPRecord)['value']),
+          type:               str((v as unknown as DAPRecord)['type'], 'unknown'),
+          variablesReference: num((v as unknown as DAPRecord)['variablesReference']),
+          memoryReference:    typeof (v as unknown as DAPRecord)['memoryReference'] === 'string'
+                                ? str((v as unknown as DAPRecord)['memoryReference'])
                                 : undefined,
           expensive:          bool(hint['lazy']),
         }

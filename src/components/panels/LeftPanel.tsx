@@ -1,12 +1,16 @@
 // src/components/panels/LeftPanel.tsx
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
 import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
+import SpecialBreakpoints from './SpecialBreakpoints'
+
 import BreakpointPanel from './BreakpointPanel'
 import WatchPanel from './WatchPanel'
+import REPLInput from './REPLInput'
+import SetValueModal from './SetValueModal'
 
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
@@ -31,13 +35,14 @@ function isVariableArray(value: unknown): value is Variable[] {
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
 // Bug 4 fix: added 'watch' tab
-type Tab = 'variables' | 'callstack' | 'breakpoints' | 'watch'
+type Tab = 'variables' | 'callstack' | 'breakpoints' | 'watch' | 'special'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'variables',   label: 'Vars'   },
-  { id: 'callstack',   label: 'Stack'  },
-  { id: 'breakpoints', label: 'BPs'    },
-  { id: 'watch',       label: 'Watch'  },
+  { id: 'variables', label: 'Vars' },
+  { id: 'callstack', label: 'Stack' },
+  { id: 'breakpoints', label: 'BPs' },
+  { id: 'watch', label: 'Watch' },
+  { id: 'special', label: 'Adv' },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -65,11 +70,19 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
 
 function typeColor(type: string): string {
   if (/^(int|short|long|uint|size_t|unsigned)/.test(type)) return 'text-[#b5cea8]'
-  if (/^(float|double)/.test(type))                        return 'text-[#dcdcaa]'
-  if (/^(bool)/.test(type))                                return 'text-[#569cd6]'
-  if (/^(char \*|std::string|string)/.test(type))          return 'text-[#ce9178]'
-  if (/\*/.test(type))                                     return 'text-[#c586c0]'
+  if (/^(float|double)/.test(type)) return 'text-[#dcdcaa]'
+  if (/^(bool)/.test(type)) return 'text-[#569cd6]'
+  if (/^(char \*|std::string|string)/.test(type)) return 'text-[#ce9178]'
+  if (/\*/.test(type)) return 'text-[#c586c0]'
   return 'text-[#9cdcfe]'
+}
+function friendlyType(type: string): string {
+  if (/^(int|short|long|uint|size_t|unsigned)/.test(type)) return 'whole number'
+  if (/^(float|double)/.test(type)) return 'decimal'
+  if (/^(bool)/.test(type)) return 'true/false'
+  if (/^(char \*|std::string|string)/.test(type)) return 'text'
+  if (/\*/.test(type)) return 'pointer'
+  return type
 }
 
 interface VariableRowProps {
@@ -78,12 +91,16 @@ interface VariableRowProps {
 }
 
 function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
-  const [expanded,     setExpanded]     = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [liveChildren, setLiveChildren] = useState<Variable[] | null>(null)
+  const [editing, setEditing] = useState(false)
+  const parentRef = useRef<number>(0)
+  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
+
 
   const hasChildren = variable.variablesReference > 0
-  const children    = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
-  const isNull      = variable.value === '0x0000000000000000' || variable.value === 'nullptr'
+  const children = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
+  const isNull = variable.value === '0x0000000000000000' || variable.value === 'nullptr'
 
   const handleExpand = useCallback(async () => {
     if (!hasChildren) return
@@ -94,6 +111,16 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
     setExpanded((e) => !e)
   }, [hasChildren, expanded, liveChildren, variable.variablesReference])
 
+  const handleRightClick = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    parentRef.current = variable.variablesReference
+    setEditing(true)
+  }, [variable.variablesReference])
+
+  const handleSetSuccess = useCallback(() => {
+    setLiveChildren(null)
+  }, [])
+
   return (
     <>
       <div
@@ -103,6 +130,7 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
         ].join(' ')}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={handleExpand}
+        onContextMenu={handleRightClick}
       >
         <span className="w-3 shrink-0 text-[#969696]">
           {hasChildren ? (expanded ? '▾' : '▸') : ' '}
@@ -110,11 +138,22 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
         <span className="text-[#9cdcfe] w-28 shrink-0 truncate">{variable.name}</span>
         <span className={['flex-1 truncate', isNull ? 'text-red-400 font-medium' : typeColor(variable.type)].join(' ')}>
           {variable.value}
+          {!isBeginnerMode && variable.memoryReference && (
+            <span className="text-[#555] ml-2 text-[10px]">{variable.memoryReference}</span>
+          )}
         </span>
-        <span className="text-[#4ec9b0] w-28 shrink-0 truncate text-right pr-2">
-          {variable.type}
+       <span className="text-[#4ec9b0] w-28 shrink-0 truncate text-right pr-2">
+          {isBeginnerMode ? friendlyType(variable.type) : variable.type}
         </span>
       </div>
+      {editing && (
+        <SetValueModal
+          variable={variable}
+          variablesReference={parentRef.current}
+          onClose={() => setEditing(false)}
+          onSuccess={handleSetSuccess}
+        />
+      )}
       {expanded && children.map((child) => (
         <VariableRow key={child.name} variable={child} depth={depth + 1} />
       ))}
@@ -123,11 +162,10 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
 }
 
 function VariablesPanel() {
-  const vars   = useDebugStore((s) => s.variables)
+  const vars = useDebugStore((s) => s.variables)
   const status = useDebugStore((s) => s.status)
 
   return (
-    // Bug 4 fix: removed disabled watch input from this panel (Watch is its own tab now)
     <div className="flex flex-col h-full">
       <div className="flex gap-1 px-2 py-1 text-[10px] uppercase tracking-wide text-[#969696] border-b border-[#3c3c3c] shrink-0">
         <span className="w-3 shrink-0" />
@@ -144,6 +182,7 @@ function VariablesPanel() {
           vars.map((v) => <VariableRow key={v.name} variable={v} />)
         )}
       </div>
+      <REPLInput disabled={status !== 'paused'} />
     </div>
   )
 }
@@ -155,9 +194,9 @@ function shortFile(filePath: string): string {
 }
 
 function CallStackPanel() {
-  const frames         = useDebugStore((s) => s.stackFrames)
-  const threads        = useDebugStore((s) => s.threads)
-  const status         = useDebugStore((s) => s.status)
+  const frames = useDebugStore((s) => s.stackFrames)
+  const threads = useDebugStore((s) => s.threads)
+  const status = useDebugStore((s) => s.status)
   // Bug 4 fix: restore isBeginnerMode — was stripped by another dev
   const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
   const [activeFrame, setActiveFrame] = useState(0)
@@ -237,10 +276,11 @@ export default function LeftPanel() {
     <div className="h-full flex flex-col bg-[#1e1e1e] border-r border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'variables'   && <VariablesPanel />}
-        {activeTab === 'callstack'   && <CallStackPanel />}
+        {activeTab === 'variables' && <VariablesPanel />}
+        {activeTab === 'callstack' && <CallStackPanel />}
         {activeTab === 'breakpoints' && <BreakpointPanel />}
         {activeTab === 'watch'       && <WatchPanel />}
+        {activeTab === 'special'     && <SpecialBreakpoints />}
       </div>
     </div>
   )

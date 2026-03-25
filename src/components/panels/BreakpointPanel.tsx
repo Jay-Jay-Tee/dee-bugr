@@ -97,20 +97,16 @@ interface BreakpointRowProps {
 
 function BreakpointRow({ bp, allBreakpoints }: Readonly<BreakpointRowProps>) {
   const [expanded, setExpanded] = useState(false)
-  const updateBreakpoint    = useDebugStore((s) => s.updateBreakpoint)
+  const updateBreakpoint = useDebugStore((s) => s.updateBreakpoint)
   const removeBreakpointById = useDebugStore((s) => s.removeBreakpointById)
 
   // Enabled = no explicit "disabled" flag. We store disabled state via
   // hitCountRemaining = 0, which the main side interprets as disabled.
   // For a clean UI toggle we use a local enabled field derived from the bp.
-  const isEnabled = bp.hitCountRemaining !== 0
+  const isEnabled = bp.enabled !== false
 
   const toggle = useCallback(() => {
-    // Disabling: set hitCountRemaining to 0 (main side skips bp when 0).
-    // Enabling: clear hitCountRemaining so it inherits the original hitCount.
-    updateBreakpoint(bp.id, {
-      hitCountRemaining: isEnabled ? 0 : bp.hitCount ?? undefined,
-    })
+    updateBreakpoint(bp.id, { enabled: !isEnabled })
   }, [bp.id, bp.hitCount, isEnabled, updateBreakpoint])
 
   const handleDelete = useCallback(() => {
@@ -119,12 +115,12 @@ function BreakpointRow({ bp, allBreakpoints }: Readonly<BreakpointRowProps>) {
 
   // Computed badge text
   const badges: string[] = []
-  if (bp.condition)          badges.push('if')
-  if (bp.hitCount)           badges.push(`×${bp.hitCount}`)
-  if (bp.logMessage)         badges.push('log')
-  if (bp.dependsOn)          badges.push('dep')
-  if (bp.groupId)            badges.push(`grp:${bp.groupId}`)
-  if (!bp.verified)          badges.push('unverified')
+  if (bp.condition) badges.push('if')
+  if (bp.hitCount) badges.push(`×${bp.hitCount}`)
+  if (bp.logMessage) badges.push('log')
+  if (bp.dependsOn) badges.push('dep')
+  if (bp.groupId) badges.push(`grp:${bp.groupId}`)
+  if (!bp.verified) badges.push('unverified')
 
   return (
     <div className={`border-b border-[#2d2d2d] ${!isEnabled ? 'opacity-50' : ''}`}>
@@ -208,7 +204,7 @@ function BreakpointRow({ bp, allBreakpoints }: Readonly<BreakpointRowProps>) {
             onCommit={(v) => {
               const n = parseInt(v, 10)
               updateBreakpoint(bp.id, {
-                hitCount:          isNaN(n) ? undefined : n,
+                hitCount: isNaN(n) ? undefined : n,
                 hitCountRemaining: isNaN(n) ? undefined : n,
               })
             }}
@@ -253,9 +249,8 @@ function BreakpointRow({ bp, allBreakpoints }: Readonly<BreakpointRowProps>) {
               </select>
               {bp.dependsOn && (
                 <span
-                  className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${
-                    bp.dependencyMet ? 'bg-green-900 text-green-400' : 'bg-[#3c3c3c] text-[#969696]'
-                  }`}
+                  className={`text-[9px] px-1 py-0.5 rounded shrink-0 ${bp.dependencyMet ? 'bg-green-900 text-green-400' : 'bg-[#3c3c3c] text-[#969696]'
+                    }`}
                 >
                   {bp.dependencyMet ? 'met' : 'waiting'}
                 </span>
@@ -283,7 +278,7 @@ function GroupSection({ groupId, breakpoints, allBreakpoints }: Readonly<GroupSe
   const [open, setOpen] = useState(true)
   const updateBreakpoint = useDebugStore((s) => s.updateBreakpoint)
 
-  const allEnabled = breakpoints.every((bp) => bp.hitCountRemaining !== 0)
+  const allEnabled = breakpoints.every((bp) => bp.enabled !== false)
 
   const toggleAll = useCallback(() => {
     for (const bp of breakpoints) {
@@ -304,7 +299,7 @@ function GroupSection({ groupId, breakpoints, allBreakpoints }: Readonly<GroupSe
           title={allEnabled ? 'Disable group' : 'Enable group'}
           className="w-2.5 h-2.5 rounded-full border shrink-0 transition-colors"
           style={{
-            background:  allEnabled ? '#75beff' : 'transparent',
+            background: allEnabled ? '#75beff' : 'transparent',
             borderColor: allEnabled ? '#75beff' : '#555',
           }}
         />
@@ -323,7 +318,7 @@ function GroupSection({ groupId, breakpoints, allBreakpoints }: Readonly<GroupSe
 // ── Breakpoint panel ──────────────────────────────────────────────────────────
 
 export default function BreakpointPanel() {
-  const breakpoints          = useDebugStore((s) => s.breakpoints)
+  const breakpoints = useDebugStore((s) => s.breakpoints)
   const removeBreakpointById = useDebugStore((s) => s.removeBreakpointById)
 
   const removeAll = useCallback(() => {
@@ -340,7 +335,7 @@ export default function BreakpointPanel() {
   }
 
   // Partition into grouped and ungrouped
-  const grouped   = new Map<string, Breakpoint[]>()
+  const grouped = new Map<string, Breakpoint[]>()
   const ungrouped: Breakpoint[] = []
 
   for (const bp of breakpoints) {

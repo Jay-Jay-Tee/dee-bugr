@@ -2,19 +2,21 @@
 
 import { useState } from 'react'
 import DebugCinema from './DebugCinema'
+import FixDiffPanel from './FixDiffPanel'
 
 // Bug 9 fix: DebugCinema was written but never mounted anywhere.
 // Day 4: Cinema tab added here. AI / Fix panels remain stubs until P4 delivers.
 
-type Tab = 'ai' | 'fix' | 'cinema'
+type Tab = 'ai' | 'fix' | 'cinema' | 'graph'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'ai',     label: 'AI'     },
   { id: 'fix',    label: 'Fix'    },
   { id: 'cinema', label: '🎬 Cinema' },
+  { id: 'graph',  label: 'Graph'  },
 ]
 
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({ active, onChange }: { readonly active: Tab; readonly onChange: (t: Tab) => void }) {
   return (
     <div className="flex border-b border-[#3c3c3c] shrink-0">
       {TABS.map((t) => (
@@ -35,7 +37,7 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
   )
 }
 
-function Placeholder({ label }: { label: string }) {
+function Placeholder({ label }: {readonly label: string }) {
   return (
     <div className="flex-1 flex items-center justify-center text-[#555] text-xs">
       {label}
@@ -50,8 +52,9 @@ export default function RightPanel() {
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-l border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <div className="flex-1 overflow-hidden flex flex-col">
-        {activeTab === 'ai'     && <Placeholder label="AI explanation — wired Day 4 (P4 delivers component)" />}
-        {activeTab === 'fix'    && <Placeholder label="Fix diff — wired Day 5" />}
+        {activeTab === 'ai'     && <Placeholder label="AI explanation — P4 delivers component" />}
+        {activeTab === 'fix'    && <FixDiffPanel />}
+        {activeTab === 'graph'  && <Placeholder label="Object graph — P3 delivers component" />}
         {activeTab === 'cinema' && <DebugCinema />}
       </div>
     </div>

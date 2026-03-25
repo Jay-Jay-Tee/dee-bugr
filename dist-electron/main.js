@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import * as path from "node:path";
 import path__default from "node:path";
-import * as fs from "fs";
+import * as fs from "node:fs";
 import * as net from "node:net";
 import { EventEmitter } from "node:events";
 import { spawn } from "node:child_process";
@@ -435,14 +435,6 @@ class SessionManager {
     this.client.on("event:output", this.handleOutput.bind(this));
     this.client.on("event:terminated", this.handleTerminated.bind(this));
     this.client.on("event:exited", this.handleExited.bind(this));
-  }
-  async handleStopped(body) {
-    console.log("[Session] Stopped:", body["reason"], "| thread:", body["threadId"]);
-    this.threadId = num(body["threadId"], 1);
-    this.state.status = "paused";
-    this.state.errorMessage = body["reason"] === "exception" ? str(body["text"]) || void 0 : void 0;
-    await this.refreshFullState();
-    this.pushToRenderer(IPC.EVENT_STOPPED, this.state);
   }
   handleContinued() {
     this.state.status = "running";
