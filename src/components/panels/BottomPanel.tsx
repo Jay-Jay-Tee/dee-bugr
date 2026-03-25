@@ -1,18 +1,20 @@
 // src/components/BottomPanel.tsx
-// Day 7: Console + History Timeline + Memory View tabs
+// Day 7: Console + History Timeline + Memory View + Debug Cinema tabs
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import type { HistoryEntry } from '../../shared/types'
+import DebugCinema from './DebugCinema'
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-type Tab = 'console' | 'history' | 'memory'
+type Tab = 'console' | 'history' | 'memory' | 'cinema'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'console', label: 'Console' },
   { id: 'history', label: 'History' },
   { id: 'memory',  label: 'Memory'  },
+  { id: 'cinema',  label: '🎬 Cinema' },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -227,6 +229,7 @@ export default function BottomPanel() {
       {tab === 'console' && <ConsoleTab />}
       {tab === 'history' && <HistoryTab />}
       {tab === 'memory'  && <MemoryTab  />}
+      {tab === 'cinema'  && <DebugCinema />}
     </div>
   )
 }

@@ -1,12 +1,25 @@
 // src/main/ipc/handlers.ts
-// All IPC channels registered here — v1 + v2 combined through Day 4.
-// Day 5-6 features that need UI from P2 are registered but delegate to
-// fully-implemented session methods.
+// All IPC channels — v1 + v2 combined, all bugs fixed.
+//
+// FIXES vs original:
+//   1. Replaced all require('../ai/groq') with static ES imports (ESM-safe)
+//   2. Fixed hardcoded 'dap:switchThread' → IPC.SWITCH_THREAD
+//   3. Fixed hardcoded 'dap:runToCursor' → IPC.RUN_TO_CURSOR
 
 import { ipcMain } from 'electron'
 import { IPC } from '../../shared/ipc'
 import { session } from '../session/sessionManager'
 import type { Language } from '../../shared/types'
+
+// ── Static AI imports (ESM-safe — no require()) ───────────────────────────────
+import {
+  explainBug,
+  suggestFix,
+  explainVariable,
+  generateWatch,
+  suggestBreakpoints,
+  sessionNarrative,
+} from '../ai/groq'
 
 export function registerAllHandlers() {
 
@@ -34,7 +47,18 @@ export function registerAllHandlers() {
   })
 
   ipcMain.handle(IPC.RESTART, async () => {
+    const args = session.getLastLaunchArgs()
     await session.terminate()
+    if (args) {
+      try {
+        await session.launch(args.language, args.target, args.breakpoints)
+        return { success: true }
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error('[IPC] RESTART re-launch failed:', msg)
+        return { success: false, error: msg }
+      }
+    }
     return { success: true }
   })
 
@@ -46,7 +70,7 @@ export function registerAllHandlers() {
   ipcMain.handle(IPC.CONTINUE, async () => { await session.continueExecution(); return { success: true } })
   ipcMain.handle(IPC.PAUSE,    async () => { await session.pause();             return { success: true } })
 
-  // ── ADVANCED FLOW (v1 Day 8 / v2 Day 5) ───────────────────────────────────
+  // ── ADVANCED FLOW ──────────────────────────────────────────────────────────
 
   ipcMain.handle(IPC.GOTO_LINE, async (_, args: { file: string; line: number }) => {
     try {
@@ -75,8 +99,8 @@ export function registerAllHandlers() {
     }
   })
 
-  // v1 Day 4: run-to-cursor
-  ipcMain.handle('dap:runToCursor', async (_, args: { file: string; line: number }) => {
+  // FIX: use IPC.RUN_TO_CURSOR instead of hardcoded string
+  ipcMain.handle(IPC.RUN_TO_CURSOR, async (_, args: { file: string; line: number }) => {
     try {
       await session.runToCursor(args.file, args.line)
       return { success: true }
@@ -121,7 +145,6 @@ export function registerAllHandlers() {
     }
   })
 
-  // v2: Method / function breakpoints
   ipcMain.handle(IPC.SET_METHOD_BP, async (_, args: { name: string }) => {
     try {
       await session.setMethodBreakpoint(args.name)
@@ -131,7 +154,6 @@ export function registerAllHandlers() {
     }
   })
 
-  // v2: Data / field watchpoints
   ipcMain.handle(IPC.SET_FIELD_WATCH, async (_, args: {
     variablesReference: number
     name: string
@@ -144,7 +166,6 @@ export function registerAllHandlers() {
     }
   })
 
-  // v2: Exception breakpoints with filters
   ipcMain.handle(IPC.SET_EXCEPTION_BP, async (_, args: {
     filters:      string[]
     classFilter?: string
@@ -157,7 +178,6 @@ export function registerAllHandlers() {
     }
   })
 
-  // v2: Group toggle
   ipcMain.handle(IPC.TOGGLE_GROUP, async (_, args: { groupId: string; enabled: boolean }) => {
     try {
       await session.toggleBreakpointGroup(args.groupId, args.enabled)
@@ -171,6 +191,10 @@ export function registerAllHandlers() {
 
   ipcMain.handle(IPC.GET_VARIABLES, async (_, args: { variablesReference: number }) =>
     session.fetchVariables(args.variablesReference))
+
+  // Missing handlers for GET_STACK and GET_SCOPES — renderer can call these directly
+  ipcMain.handle(IPC.GET_STACK, async () => session.getState().stackFrames)
+  ipcMain.handle(IPC.GET_SCOPES, async () => session.getState().scopes)
 
   ipcMain.handle(IPC.EVALUATE, async (_, args: { expr: string }) =>
     session.evaluate(args.expr))
@@ -192,7 +216,8 @@ export function registerAllHandlers() {
     }
   })
 
-  ipcMain.handle('dap:switchThread', async (_, args: { threadId: number }) => {
+  // FIX: was hardcoded 'dap:switchThread' — now uses IPC.SWITCH_THREAD
+  ipcMain.handle(IPC.SWITCH_THREAD, async (_, args: { threadId: number }) => {
     try {
       await session.switchThread(args.threadId)
       return { success: true }
@@ -211,9 +236,6 @@ export function registerAllHandlers() {
 
   // ── HISTORY ────────────────────────────────────────────────────────────────
 
-  // JUMP_TO_STEP: renderer asks to restore state at a given step index
-  // This is used by P3's click-to-step on the history chart
-  // For now: returns the history entry — P2/P3 restore the Monaco cursor
   ipcMain.handle(IPC.JUMP_TO_STEP, async (_, args: { step: number }) => {
     const state = session.getState()
     const entry = state.executionHistory.find(h => h.step === args.step)
@@ -221,11 +243,10 @@ export function registerAllHandlers() {
     return { success: true, entry }
   })
 
-  // ── AI HANDLERS ─────────────────────────────────────────────────────────────
+  // ── AI HANDLERS (static imports — no require()) ────────────────────────────
 
   ipcMain.handle(IPC.AI_EXPLAIN, async () => {
     try {
-      const { explainBug } = require('../ai/groq')
       const explanation = await explainBug()
       return { success: true, explanation }
     } catch (err: unknown) {
@@ -237,8 +258,7 @@ export function registerAllHandlers() {
 
   ipcMain.handle(IPC.AI_FIX, async () => {
     try {
-      const { suggestFix } = require('../ai/groq')
-      const fix = await suggestFix() // now returns { originalCode, fixedCode, explanation }
+      const fix = await suggestFix()
       return { success: true, fix }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -249,45 +269,37 @@ export function registerAllHandlers() {
 
   ipcMain.handle(IPC.AI_EXPLAIN_VAR, async (_, args: { varName: string }) => {
     try {
-      const { explainVariable } = require('../ai/groq')
       const explanation = await explainVariable(args.varName)
       return { success: true, explanation }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return { success: false, error: msg }
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 
   ipcMain.handle(IPC.AI_WATCHPOINT, async () => {
     try {
-      const { generateWatch } = require('../ai/groq')
       const suggestions = await generateWatch()
       return { success: true, suggestions }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return { success: false, error: msg }
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 
   ipcMain.handle(IPC.AI_SUGGEST_BPS, async (_, args: { sourceCode: string; language: Language }) => {
     try {
-      const { suggestBreakpoints } = require('../ai/groq')
       const suggestions = await suggestBreakpoints(args.sourceCode, args.language)
       return { success: true, suggestions }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return { success: false, error: msg }
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 
   ipcMain.handle(IPC.AI_NARRATIVE, async () => {
     try {
-      const { sessionNarrative } = require('../ai/groq')
       const narrative = await sessionNarrative()
       return { success: true, narrative }
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      return { success: false, error: msg }
+      return { success: false, error: err instanceof Error ? err.message : String(err) }
     }
   })
 

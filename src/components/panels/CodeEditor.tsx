@@ -1,11 +1,15 @@
 // src/components/panels/CodeEditor.tsx
+// ADDITIONS:
+//   - Ghost BP overlay: listens to lucid:ai-suggest-bps, renders in gutter
+//   - F9 / lucid:toggle-bp-at-cursor: toggles BP at cursor position
+//   - lucid:cinema-step: scrolls editor to the step's line during Cinema replay
 
 import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import type { OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { useDebugStore } from '../../renderer/store/debugStore'
-import { MOCK_SOURCE_LINES, MOCK_DEBUG_STATE } from '../../renderer/mockData'
+import { MOCK_SOURCE_LINES } from '../../renderer/mockData'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -48,15 +52,11 @@ function buildOverlayText(vars: { name: string; value: string }[]): string {
     .join('   ')
 }
 
-// Derives a map of line → last known variable snapshot for the current file,
-// excluding the current execution line (which gets its own live overlay).
 function buildHistoryOverlays(
   executionHistory: { file: string; line: number; variables: Record<string, { value: string; changed: boolean }> }[],
   currentFile: string,
   currentLine: number,
 ): Map<number, { text: string; hasChanged: boolean }> {
-  // Walk history in order so later entries overwrite earlier ones —
-  // each line shows the most recent values from the last time it was visited.
   const result = new Map<number, { text: string; hasChanged: boolean }>()
 
   for (const entry of executionHistory) {
@@ -93,6 +93,7 @@ export default function CodeEditor() {
   const cursorCollectionRef    = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const overlayCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const historyCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const ghostBPCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
   // ── Mount ─────────────────────────────────────────────────────────────────
   const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -102,6 +103,14 @@ export default function CodeEditor() {
     cursorCollectionRef.current  = editor.createDecorationsCollection([])
     overlayCollectionRef.current = editor.createDecorationsCollection([])
     historyCollectionRef.current = editor.createDecorationsCollection([])
+    ghostBPCollectionRef.current = editor.createDecorationsCollection([])
+
+    // Track cursor line for Run-to-Cursor and F9
+    editor.onDidChangeCursorPosition((e) => {
+      window.dispatchEvent(
+        new CustomEvent('lucid:cursor-line', { detail: e.position.lineNumber })
+      )
+    })
 
     editor.onMouseDown((e) => {
       const isGutter =
@@ -109,8 +118,40 @@ export default function CodeEditor() {
         e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
       if (!isGutter || !e.target.position) return
       const line = e.target.position.lineNumber
+
       const { currentFile: file, toggleBreakpoint } = storeRef.current()
-      toggleBreakpoint(file || MOCK_DEBUG_STATE.currentFile, line)
+
+      // FIX: only set breakpoints when we have a real file path from a live session.
+      if (!file) {
+        console.warn('[CodeEditor] No active file — launch a session before setting breakpoints')
+        return
+      }
+
+      toggleBreakpoint(file, line)
+    })
+
+    // F9 / lucid:toggle-bp-at-cursor
+    const toggleAtCursor = () => {
+      const pos  = editor.getPosition()
+      const line = pos?.lineNumber
+      if (!line) return
+      const { currentFile: file, toggleBreakpoint } = storeRef.current()
+      if (!file) return
+      toggleBreakpoint(file, line)
+    }
+    window.addEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
+
+    // Cinema step: scroll editor to the replayed line
+    const cinemaStep = (e: Event) => {
+      const { line } = (e as CustomEvent<{ file: string; line: number }>).detail
+      if (line) editor.revealLineInCenterIfOutsideViewport(line, 1)
+    }
+    window.addEventListener('lucid:cinema-step', cinemaStep)
+
+    // Cleanup listeners when editor is disposed
+    editor.onDidDispose(() => {
+      window.removeEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
+      window.removeEventListener('lucid:cinema-step', cinemaStep)
     })
   }, [])
 
@@ -121,8 +162,9 @@ export default function CodeEditor() {
     if (!monaco || !col) return
 
     const { currentFile: file } = storeRef.current()
-    const modelFile = file || MOCK_DEBUG_STATE.currentFile
-    const relevant  = breakpoints.filter((bp) => bp.file === modelFile)
+    if (!file) { col.set([]); return }
+
+    const relevant = breakpoints.filter((bp) => bp.file === file)
 
     col.set(relevant.map((bp) => ({
       range: new monaco.Range(bp.line, 1, bp.line, 1),
@@ -191,9 +233,6 @@ export default function CodeEditor() {
   }, [variables, currentLine])
 
   // ── History overlays (past lines) ─────────────────────────────────────────
-  // Shows the last known variable values on every previously visited line,
-  // dimmer than the current overlay. Lines where a value changed get a
-  // separate CSS class so they can be styled distinctly.
   useEffect(() => {
     const monaco = monacoRef.current
     const col    = historyCollectionRef.current
@@ -205,8 +244,9 @@ export default function CodeEditor() {
     }
 
     const { currentFile: file } = storeRef.current()
-    const modelFile = file || MOCK_DEBUG_STATE.currentFile
-    const historyMap = buildHistoryOverlays(executionHistory, modelFile, currentLine)
+    if (!file) { col.set([]); return }
+
+    const historyMap = buildHistoryOverlays(executionHistory, file, currentLine)
 
     col.set(
       [...historyMap.entries()].map(([line, { text, hasChanged }]) => ({
@@ -223,7 +263,33 @@ export default function CodeEditor() {
     )
   }, [executionHistory, currentLine, currentFile])
 
-  // ── Language sync ─────────────────────────────────────────────────────────
+  // ── Ghost BP suggestions (AI: suggest breakpoints) ────────────────────────
+  useEffect(() => {
+    const monaco = monacoRef.current
+    const col    = ghostBPCollectionRef.current
+    if (!monaco || !col) return
+
+    const handler = (e: Event) => {
+      const suggestions = (e as CustomEvent<Array<{ line: number; reason: string }>>) .detail
+      if (!suggestions || suggestions.length === 0) { col.set([]); return }
+
+      col.set(suggestions.map((s) => ({
+        range: new monaco.Range(s.line, 1, s.line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: 'lucid-ghost-bp-glyph',
+          glyphMarginHoverMessage: { value: `💡 AI suggests: ${s.reason}` },
+          className: 'lucid-ghost-bp-line',
+        },
+      })))
+
+      // Auto-clear ghost BPs after 30 seconds so they don't linger
+      setTimeout(() => col.set([]), 30_000)
+    }
+
+    window.addEventListener('lucid:ai-suggest-bps', handler)
+    return () => window.removeEventListener('lucid:ai-suggest-bps', handler)
+  }, [])
   useEffect(() => {
     const editor = editorRef.current
     const monaco = monacoRef.current

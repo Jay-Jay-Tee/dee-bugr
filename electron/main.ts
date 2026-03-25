@@ -1,3 +1,5 @@
+import 'dotenv/config'
+
 import { app, BrowserWindow } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
@@ -21,6 +23,11 @@ let win: BrowserWindow | null
 function createWindow() {
   win = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC!, 'electron-vite.svg'),
+    title: 'Lucid — The Debugger That Explains Itself',
+    width: 1440,
+    height: 900,
+    minWidth: 1024,
+    minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
@@ -36,6 +43,18 @@ function createWindow() {
 }
 
 app.whenReady().then(async () => {
+  // ── Groq API key check ────────────────────────────────────────────────────
+  if (!process.env.DEE_BUGR_GROQ_KEY) {
+    console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.warn('⚠  WARNING: DEE_BUGR_GROQ_KEY is not set.')
+    console.warn('   AI features (Explain Bug, Suggest Fix, tooltips) will fail.')
+    console.warn('   Get a free key at https://console.groq.com')
+    console.warn('   Then add to your .env file:  DEE_BUGR_GROQ_KEY=gsk_...')
+    console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  } else {
+    console.log('[Main] Groq API key found ✓')
+  }
+
   // Import ONCE here — do not also import at the top of this file
   const { registerAllHandlers } = await import('../src/main/ipc/handlers')
   registerAllHandlers()

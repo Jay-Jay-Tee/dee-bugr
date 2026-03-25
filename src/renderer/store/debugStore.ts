@@ -32,7 +32,16 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
   isBeginnerMode: false,
 
   setState: (newState) =>
-    set((prev) => ({ ...prev, ...newState })),
+    set((prev) => ({
+      ...prev,
+      ...newState,
+      // Preserve lastReturnValue unless the new state explicitly includes it.
+      // Every EVENT_STOPPED sends the full state, but lastReturnValue is only
+      // set by EVENT_RETURN_VAL — spreading would wipe it on the next stop.
+      lastReturnValue: newState.lastReturnValue ?? prev.lastReturnValue,
+      // Similarly preserve outputLog — it grows incrementally, never from state
+      outputLog: prev.outputLog,
+    })),
 
   setStatus: (status) => set({ status }),
 

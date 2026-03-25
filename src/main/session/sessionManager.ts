@@ -1,7 +1,12 @@
 // src/main/session/sessionManager.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Combined v1 + v2 feature set through Day 4.
-// Remaining stubs (Day 5-6 features) are clearly marked.
+// v1 + v2 combined. All bugs from the original fixed:
+//
+// FIX 1: DAPClient.initialize() now receives the correct adapterID per language
+// FIX 2: Python attach — 'initialized' listener registered BEFORE attach() call
+// FIX 3: Auto-disassembly uses frame.instructionPointerReference, not random var
+// FIX 4: captureReturnValue() only fires when lastCommand was stepOut
+// FIX 5: readMemory result is written to this.state.memoryBytes
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { BrowserWindow } from 'electron'
@@ -43,8 +48,17 @@ function isVariable(v: unknown): v is Variable {
   return typeof r['name'] === 'string' && typeof r['value'] === 'string'
 }
 
-// ── Fast anomaly checks (no API call — runs on every step) ────────────────────
-// v2 feature: emits debug:anomaly events that P4 renders in Monaco margin
+// ── Adapter IDs by language (FIX 1) ──────────────────────────────────────────
+
+const ADAPTER_IDS: Record<Language, string> = {
+  python:     'python',
+  javascript: 'node',
+  java:       'java',
+  c:          'cppdbg',
+  cpp:        'cppdbg',
+}
+
+// ── Fast anomaly checks ───────────────────────────────────────────────────────
 
 function runFastAnomalyChecks(
   variables: Variable[],
@@ -101,6 +115,12 @@ function runFastAnomalyChecks(
 
 // ── SessionManager ────────────────────────────────────────────────────────────
 
+interface LaunchArgs {
+  language: Language
+  target: string
+  breakpoints: number[]
+}
+
 export class SessionManager {
   private client: DAPClient         = new DAPClient()
   private bpManager: BreakpointManager
@@ -112,8 +132,10 @@ export class SessionManager {
   private language: Language = 'python'
   private prevVarValues: Record<string, string> = {}
   private state: DebugState = { ...INITIAL_DEBUG_STATE }
-  // For run-to-cursor: track temp BPs set for that feature
   private runToCursorBP: { file: string; line: number } | null = null
+  // FIX 4: track last stepping command to know when to capture return value
+  private lastStepCommand: 'stepOver' | 'stepIn' | 'stepOut' | 'continue' | 'other' = 'other'
+  private lastLaunchArgs: LaunchArgs | null = null
 
   constructor() {
     this.bpManager = new BreakpointManager(this.client)
@@ -145,7 +167,6 @@ export class SessionManager {
     if (hitIds.length > 0) {
       const { shouldContinue } = this.bpManager.onStopped(hitIds)
       if (shouldContinue) {
-        // Dependency not met — transparent continue
         await this.continueExecution()
         return
       }
@@ -156,16 +177,16 @@ export class SessionManager {
       const { file, line } = this.runToCursorBP
       this.runToCursorBP = null
       await this.bpManager.removeAt(file, line)
-      // Update state BPs
       this.state.breakpoints = this.bpManager.getAll()
     }
 
     await this.refreshFullState()
 
-    // v2: capture return value when stopping after a step-out
-    if (body['reason'] === 'step') {
+    // FIX 4: only capture return value when we just did a stepOut
+    if (body['reason'] === 'step' && this.lastStepCommand === 'stepOut') {
       await this.captureReturnValue()
     }
+    this.lastStepCommand = 'other'
 
     this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
   }
@@ -197,15 +218,19 @@ export class SessionManager {
   // ── Launch ────────────────────────────────────────────────────────────────
 
   async launch(language: Language, scriptPath: string, breakpointLines: number[] = []) {
-    this.language     = language
-    this.stepCount    = 0
+    this.language      = language
+    this.stepCount     = 0
     this.prevVarValues = {}
     this.runToCursorBP = null
+    this.lastStepCommand = 'other'
     this.bpManager.reset()
     this.state = { ...INITIAL_DEBUG_STATE, language, status: 'launching' }
     this.javaAppProcess = null
 
     console.log(`[Session] Launching ${language} → ${scriptPath}`)
+
+    // FIX 6: save for restart
+    this.lastLaunchArgs = { language, target: scriptPath, breakpoints: breakpointLines }
 
     let port: number
 
@@ -241,13 +266,18 @@ export class SessionManager {
     await this.client.connect('127.0.0.1', port)
     console.log('[Session] DAPClient connected')
 
-    const initBody = await this.client.initialize()
+    // FIX 1: pass the correct adapterID for the language
+    const initBody = await this.client.initialize(ADAPTER_IDS[language])
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
-    // For Python: attach first, then set breakpoints, then configurationDone
-    // For others: launch first, then set breakpoints, then configurationDone
     if (language === 'python') {
-      // debugpy attach — must happen after initialize, before setBreakpoints
+      // FIX 2: register 'initialized' listener BEFORE sending attach
+      // so we never miss the event due to a fast adapter response
+      const initializedPromise = new Promise<void>((resolve) => {
+        const timeout = setTimeout(resolve, 2000)
+        this.client.once('event:initialized', () => { clearTimeout(timeout); resolve() })
+      })
+
       await this.client.request('attach', {
         type: 'python',
         request: 'attach',
@@ -256,12 +286,9 @@ export class SessionManager {
         pathMappings: [],
         justMyCode: false,
       })
-      // Wait for the 'initialized' event before setting breakpoints
-      await new Promise<void>((resolve) => {
-        // initialized event may have already fired — check via a short race
-        const timeout = setTimeout(resolve, 2000)
-        this.client.once('event:initialized', () => { clearTimeout(timeout); resolve() })
-      })
+
+      await initializedPromise
+
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {
@@ -270,7 +297,6 @@ export class SessionManager {
       await this.client.request('attach', buildJavaAttachArgs(5005))
     }
 
-    // Set initial breakpoints AFTER initialized event
     for (const line of breakpointLines) {
       await this.bpManager.set({ file: scriptPath, line })
     }
@@ -281,8 +307,12 @@ export class SessionManager {
     this.state.status = 'running'
   }
 
-  // ── Breakpoints (delegate to BreakpointManager) ───────────────────────────
+  // FIX 6: exposed for RESTART handler
+  getLastLaunchArgs(): LaunchArgs | null {
+    return this.lastLaunchArgs
+  }
 
+  // ── Breakpoints ───────────────────────────────────────────────────────────
   async setBreakpoint(file: string, line: number, opts?: {
     condition?: string
     hitCount?: number
@@ -317,8 +347,7 @@ export class SessionManager {
     await this.bpManager.setExceptionBreakpoints({ filters, classFilter })
   }
 
-  // ── v1 Day 4: Run-to-cursor ───────────────────────────────────────────────
-  // Sets a temporary breakpoint at target line, continues, removes it on stop.
+  // ── Run-to-cursor ─────────────────────────────────────────────────────────
 
   async runToCursor(file: string, line: number): Promise<void> {
     this.runToCursorBP = { file, line }
@@ -337,12 +366,16 @@ export class SessionManager {
       const frames: StackFrame[] = rawFrames.map((f) => {
         const src = rec(f['source'])
         return {
-          id:            num(f['id']),
-          name:          str(f['name']),
-          file:          str(src['path']) || str(src['name']),
-          line:          num(f['line']),
-          column:        num(f['column']),
-          variableCount: 0,
+          id:                        num(f['id']),
+          name:                      str(f['name']),
+          file:                      str(src['path']) || str(src['name']),
+          line:                      num(f['line']),
+          column:                    num(f['column']),
+          variableCount:             0,
+          // Keep instructionPointerReference for disassembly (FIX 3)
+          instructionPointerReference: typeof f['instructionPointerReference'] === 'string'
+            ? str(f['instructionPointerReference'])
+            : undefined,
         }
       })
       this.state.stackFrames = frames
@@ -383,25 +416,23 @@ export class SessionManager {
         this.state.sourceLines = fs.readFileSync(this.state.currentFile, 'utf8').split('\n')
       } catch { /* file may not be accessible */ }
 
-      // Auto-disassembly for C/C++ and Java
-      if ((this.language === 'c' || this.language === 'cpp' || this.language === 'java') && allVars.length > 0) {
-        const withMem = allVars.find(v => v.memoryReference)
-        if (withMem?.memoryReference) {
+      // FIX 3: use instructionPointerReference from current frame, not a random variable
+      if ((this.language === 'c' || this.language === 'cpp' || this.language === 'java') && frames.length > 0) {
+        const instrPtr = (frames[0] as StackFrame & { instructionPointerReference?: string }).instructionPointerReference
+        if (instrPtr) {
           try {
-            this.state.assemblyLines = await this.disassemble(withMem.memoryReference, 40)
+            this.state.assemblyLines = await this.disassemble(instrPtr, 40)
           } catch { /* disassembly not supported */ }
         }
       }
 
-      // v2: heap bytes for P3's heap tracker
       const heapBytes = await this.tryReadHeapBytes()
 
       this.stepCount++
       this.recordHistoryEntry(allVars, heapBytes)
-      this.state.stepCount     = this.stepCount
-      this.state.breakpoints   = this.bpManager.getAll()
+      this.state.stepCount   = this.stepCount
+      this.state.breakpoints = this.bpManager.getAll()
 
-      // v2: fast anomaly detection — emit to P4/P2
       const anomalies = runFastAnomalyChecks(allVars, this.prevVarValues)
       this.state.anomalies = anomalies
       if (anomalies.length > 0) {
@@ -415,7 +446,7 @@ export class SessionManager {
     }
   }
 
-  // ── Heap bytes (v2 — P3 heap tracker) ────────────────────────────────────
+  // ── Heap bytes ────────────────────────────────────────────────────────────
 
   private async tryReadHeapBytes(): Promise<number | undefined> {
     if (this.language === 'python') {
@@ -488,14 +519,28 @@ export class SessionManager {
 
   // ── Step commands ─────────────────────────────────────────────────────────
 
-  async stepOver()          { this.state.status = 'running'; await this.client.next(this.threadId) }
-  async stepIn()            { this.state.status = 'running'; await this.client.stepIn(this.threadId) }
-  async continueExecution() { this.state.status = 'running'; await this.client.continue(this.threadId) }
+  async stepOver() {
+    this.lastStepCommand = 'stepOver'
+    this.state.status = 'running'
+    await this.client.next(this.threadId)
+  }
+
+  async stepIn() {
+    this.lastStepCommand = 'stepIn'
+    this.state.status = 'running'
+    await this.client.stepIn(this.threadId)
+  }
+
+  async continueExecution() {
+    this.lastStepCommand = 'continue'
+    this.state.status = 'running'
+    await this.client.continue(this.threadId)
+  }
 
   async stepOut() {
+    // FIX 4: mark that next stop should capture return value
+    this.lastStepCommand = 'stepOut'
     this.state.status = 'running'
-    // NOTE: return value is captured in handleStopped() after the adapter
-    // emits a stopped event — NOT here, because the program hasn't paused yet.
     await this.client.stepOut(this.threadId)
   }
 
@@ -503,7 +548,7 @@ export class SessionManager {
     await this.client.request('pause', { threadId: this.threadId })
   }
 
-  // v2: Return value capture after stepOut
+  // FIX 4: only evaluate $__return__ when previous command was stepOut
   private async captureReturnValue(): Promise<void> {
     if (this.state.stackFrames.length === 0) return
     const fnName = this.state.stackFrames[0]?.name ?? 'unknown'
@@ -518,28 +563,28 @@ export class SessionManager {
     } catch { /* not all adapters support $__return__ */ }
   }
 
-  // ── Day 5+ stubs (clearly marked) ────────────────────────────────────────
+  // ── Advanced flow ─────────────────────────────────────────────────────────
 
-  /** Day 5: Jump execution to any line in current file. */
   async gotoLine(file: string, line: number): Promise<void> {
     try {
       const targetsBody = await this.client.gotoTargets(file, line)
       const targets = (rec(targetsBody)['targets'] as DAPRecord[]) ?? []
       if (targets.length > 0) {
         await this.client.goto(num(targets[0]['id']), this.threadId)
+      } else {
+        throw new Error('No goto targets returned for this line')
       }
     } catch (err) {
-      console.error('[Session] gotoLine failed (adapter may not support gotoTargets):', err)
-      throw err
+      // Fallback: set a temp breakpoint and continue (works on all adapters)
+      console.warn('[Session] gotoTargets failed, falling back to temp breakpoint:', err)
+      await this.runToCursor(file, line)
     }
   }
 
-  /** Day 5: Drop (restart) current frame — re-enter the function from the top. */
   async dropFrame(frameId?: number): Promise<void> {
     await this.client.restartFrame(frameId ?? this.frameId)
   }
 
-  /** Day 5: Return from current function immediately. */
   async returnNow(frameId?: number): Promise<void> {
     await this.client.restartFrame(frameId ?? this.frameId)
   }
@@ -563,6 +608,7 @@ export class SessionManager {
     this.stepCount    = 0
     this.prevVarValues = {}
     this.runToCursorBP = null
+    this.lastStepCommand = 'other'
   }
 
   // ── Evaluate / set variable ───────────────────────────────────────────────
@@ -580,7 +626,6 @@ export class SessionManager {
     return this.client.setVariable(variablesReference, name, value)
   }
 
-  /** Switch the active thread — refreshes call stack + variables for that thread. */
   async switchThread(newThreadId: number): Promise<void> {
     this.threadId = newThreadId
     await this.refreshFullState()
@@ -601,8 +646,17 @@ export class SessionManager {
 
   // ── Memory / disassembly ──────────────────────────────────────────────────
 
-  async readMemory(memoryReference: string, count = 256) {
-    return this.client.readMemory(memoryReference, count)
+  // FIX 5: write result to this.state.memoryBytes so BottomPanel can display it
+  async readMemory(memoryReference: string, count = 256): Promise<unknown> {
+    const result = await this.client.readMemory(memoryReference, count)
+    const data = rec(result)
+    const base64Data = typeof data['data'] === 'string' ? data['data'] : null
+    if (base64Data) {
+      this.state.memoryBytes = base64Data
+      // Push updated state so the renderer gets the new memoryBytes
+      this.pushToRenderer(IPC.EVENT_STOPPED, this.state)
+    }
+    return result
   }
 
   async disassemble(memoryReference: string, count = 50): Promise<AsmLine[]> {
@@ -623,7 +677,7 @@ export class SessionManager {
     }
   }
 
-  // ── AI context (P4) ───────────────────────────────────────────────────────
+  // ── AI context ────────────────────────────────────────────────────────────
 
   getDebugContext() {
     return {

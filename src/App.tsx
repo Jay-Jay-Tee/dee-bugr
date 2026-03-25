@@ -1,6 +1,6 @@
 // src/App.tsx
 import { useEffect } from 'react'
-import { initIPCListeners } from './renderer/store/debugStore'
+import { initIPCListeners, cleanupIPCListeners } from './renderer/store/debugStore'
 import { useDebugStore } from './renderer/store/debugStore'
 import { IPC } from './shared/ipc'
 import type { IPCChannel } from './shared/ipc'
@@ -15,6 +15,7 @@ function invoke(channel: IPCChannel, args?: unknown) {
 export default function App() {
   useEffect(() => {
     initIPCListeners()
+    return () => cleanupIPCListeners()
   }, [])
 
   useEffect(() => {
