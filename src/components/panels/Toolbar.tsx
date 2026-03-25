@@ -151,13 +151,13 @@ function LaunchStopBtn({ isActive, onLaunch, onStop }: {
 // ── Step controls ─────────────────────────────────────────────────────────────
 
 function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStepIn, onStepOut }: {
-  isPaused: boolean
-  isRunning: boolean
-  onContinue: () => void
-  onPause: () => void
-  onNext: () => void
-  onStepIn: () => void
-  onStepOut: () => void
+  readonly isPaused: boolean
+  readonly isRunning: boolean
+  readonly onContinue: () => void
+  readonly onPause: () => void
+  readonly onNext: () => void
+  readonly onStepIn: () => void
+  readonly onStepOut: () => void
 }) {
   return (
     <>
@@ -173,14 +173,14 @@ function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStep
 // ── AI buttons ────────────────────────────────────────────────────────────────
 // Day 4: wired to RightPanel via tab switching — the buttons open the right panel tab
 
-function AIButtons({ isPaused }: { isPaused: boolean }) {
+function AIButtons({ isPaused }: {readonly isPaused: boolean }) {
   const handleExplain = useCallback(() => {
     // Dispatch a custom event that RightPanel listens for (or just invoke IPC directly)
-    window.dispatchEvent(new CustomEvent('lucid:ai-explain'))
+    globalThis.dispatchEvent(new CustomEvent('lucid:ai-explain'))
   }, [])
 
   const handleFix = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('lucid:ai-fix'))
+    globalThis.dispatchEvent(new CustomEvent('lucid:ai-fix'))
   }, [])
 
   return (
@@ -206,8 +206,8 @@ const PLACEHOLDER: Record<string, string> = {
 }
 
 function FileInputBar({ language, onLaunch }: {
-  language: Language
-  onLaunch: (target: string) => void
+  readonly language: Language
+  readonly onLaunch: (target: string) => void
 }) {
   const [value, setValue] = useState('')
   const [launching, setLaunching] = useState(false)

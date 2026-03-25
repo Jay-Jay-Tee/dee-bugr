@@ -10,5 +10,4 @@ declare global {
     on(channel: string, callback: (data: unknown) => void): () => void
   }
 
-  var electronAPI: ElectronAPI
 }

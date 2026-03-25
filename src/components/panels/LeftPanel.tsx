@@ -6,15 +6,12 @@ import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
 import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
 import BreakpointPanel from './BreakpointPanel'
+import WatchPanel from './WatchPanel'
 
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
 function invoke(channel: typeof IPC[keyof typeof IPC], args?: unknown) {
-  const api = (window as Window & {
-    electronAPI?: { invoke: (ch: typeof IPC[keyof typeof IPC], payload?: unknown) => Promise<unknown> }
-  }).electronAPI
-
-  return api?.invoke(channel, args)
+  return globalThis.electronAPI?.invoke(channel, args)
     .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
 
@@ -33,12 +30,13 @@ function isVariableArray(value: unknown): value is Variable[] {
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
-type Tab = 'variables' | 'callstack' | 'breakpoints'
+type Tab = 'variables' | 'callstack' | 'breakpoints' | 'watch'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'variables',   label: 'Variables' },
-  { id: 'callstack',   label: 'Call Stack' },
-  { id: 'breakpoints', label: 'Breakpoints' },
+  { id: 'variables',   label: 'Vars' },
+  { id: 'callstack',   label: 'Stack' },
+  { id: 'breakpoints', label: 'BPs' },
+  { id: 'watch',       label: 'Watch' },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
@@ -49,7 +47,7 @@ function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void 
           key={t.id}
           onClick={() => onChange(t.id)}
           className={[
-            'flex-1 px-2 py-1.5 text-[10px] uppercase tracking-wide transition-colors',
+            'flex-1 px-1 py-1.5 text-[10px] uppercase tracking-wide transition-colors',
             active === t.id
               ? 'text-white border-b-2 border-blue-500 -mb-px'
               : 'text-[#969696] hover:text-white',
@@ -144,13 +142,6 @@ function VariablesPanel() {
           vars.map((v) => <VariableRow key={v.name} variable={v} />)
         )}
       </div>
-      <div className="border-t border-[#3c3c3c] px-2 py-1.5 shrink-0">
-        <input
-          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="Watch expression (Day 4)"
-          disabled
-        />
-      </div>
     </div>
   )
 }
@@ -162,9 +153,9 @@ function shortFile(filePath: string): string {
 }
 
 function CallStackPanel() {
-  const frames  = useDebugStore((s) => s.stackFrames)
-  const threads = useDebugStore((s) => s.threads)
-  const status  = useDebugStore((s) => s.status)
+  const frames         = useDebugStore((s) => s.stackFrames)
+  const threads        = useDebugStore((s) => s.threads)
+  const status         = useDebugStore((s) => s.status)
   const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
   const [activeFrame, setActiveFrame] = useState(0)
 
@@ -175,9 +166,7 @@ function CallStackPanel() {
 
   const handleThreadChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const threadId = Number(e.target.value)
-    if (!isNaN(threadId)) {
-      invoke('dap:switchThread' as any, { threadId })
-    }
+    if (!isNaN(threadId)) invoke(IPC.SWITCH_THREAD, { threadId })
   }, [])
 
   return (
@@ -220,10 +209,9 @@ function CallStackPanel() {
               <div className="text-[#969696] text-[10px] font-mono mt-0.5 ml-6 truncate">
                 {isBeginnerMode
                   ? `${frame.file.split('/').pop()}  line ${frame.line}`
-                  : `${shortFile(frame.file)}:${frame.line}`
-                }
+                  : `${shortFile(frame.file)}:${frame.line}`}
               </div>
-              {isBeginnerMode && frame.variableCount !== undefined && frame.variableCount > 0 && (
+              {isBeginnerMode && !!frame.variableCount && frame.variableCount > 0 && (
                 <div className="text-[10px] text-[#569cd6] ml-6 mt-0.5">
                   {frame.variableCount} local {frame.variableCount === 1 ? 'variable' : 'variables'}
                 </div>
@@ -248,6 +236,7 @@ export default function LeftPanel() {
         {activeTab === 'variables'   && <VariablesPanel />}
         {activeTab === 'callstack'   && <CallStackPanel />}
         {activeTab === 'breakpoints' && <BreakpointPanel />}
+        {activeTab === 'watch'       && <WatchPanel />}
       </div>
     </div>
   )
