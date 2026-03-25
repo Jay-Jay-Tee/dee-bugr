@@ -213,6 +213,7 @@ export class DAPClient extends EventEmitter {
       justMyCode: false,
     });
   }
+  
 
   async setBreakpoints(file: string, lines: number[], conditions?: Record<number, string>) {
     return this.request('setBreakpoints', {
