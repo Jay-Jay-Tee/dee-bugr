@@ -1,4 +1,4 @@
-# Lucid — Setup Guide (Day 10)
+# DEE-bugr — Setup Guide (Day 10)
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ cp .env.example .env
 pnpm dev
 ```
 
-This opens the Lucid Electron window with hot reload.
+This opens the DEE-bugr Electron window with hot reload.
 
 ## 4. Build Demo Programs
 
@@ -43,7 +43,7 @@ This opens the Lucid Electron window with hot reload.
 gcc -g -O0 -o demo demo.c
 
 # Python demo — no compilation needed
-# Run directly via Lucid's file picker
+# Run directly via DEE-bugr's file picker
 ```
 
 ## 5. Adapter Setup (C/C++)
@@ -83,7 +83,7 @@ cd java-debug && mvn package -DskipTests
 ## 7. Demo Walkthrough (7 minutes)
 
 ### Opening (0:00 — 0:45)
-1. Launch Lucid
+1. Launch DEE-bugr
 2. Select **C / C++** from the language selector
 3. Type the path to the compiled `demo` binary in the file input, click **Go**
 4. Click **🎯 BPs** — 5 ghost breakpoints appear (AI pre-run suggestion)
@@ -126,11 +126,11 @@ cd java-debug && mvn package -DskipTests
 27. AI writes a 4-sentence summary of the debug session
 
 ### Close (6:30)
-> *"This is Lucid — the debugger that explains itself. Every feature you just saw — none of it exists in VSCode, GDB, or IntelliJ's open source tooling."*
+> *"This is DEE-bugr — the debugger that explains itself. Every feature you just saw — none of it exists in VSCode, GDB, or IntelliJ's open source tooling."*
 
 ## 8. Day 10 Checklist
 
-- [ ] `pnpm dev` opens Lucid without errors
+- [ ] `pnpm dev` opens DEE-bugr without errors
 - [ ] `demo.c` compiled and breakpoint hits on line 35
 - [ ] Anomaly detection fires automatically (null pointer)
 - [ ] AI Explain returns a good explanation (test 3x)
