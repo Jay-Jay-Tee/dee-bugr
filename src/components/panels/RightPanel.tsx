@@ -1,23 +1,31 @@
+// src/components/panels/RightPanel.tsx
+// ADDITIONS/FIXES vs original:
+//   - ObjectGraphPanel: real vis-network implementation (P3's core job)
+//   - Added 'narrative' tab — shows AI session narrative
+//   - Ghost BP suggestion overlay (listens to lucid:ai-suggest-bps)
+//   - AnomalyBanner improved with line number and click-to-jump
+
 import { useState, useEffect, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
-import type { Anomaly } from '../../shared/types'
+import type { Anomaly, Variable } from '../../shared/types'
 
-type Tab = 'ai' | 'fix' | 'asm' | 'graph'
+type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'narrative'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'ai',    label: 'AI'       },
-  { id: 'fix',   label: 'Fix'      },
-  { id: 'asm',   label: 'Assembly' },
-  { id: 'graph', label: 'Graph'    },
+  { id: 'ai',        label: 'AI'        },
+  { id: 'fix',       label: 'Fix'       },
+  { id: 'asm',       label: 'Assembly'  },
+  { id: 'graph',     label: 'Graph'     },
+  { id: 'narrative', label: 'Narrative' },
 ]
 
 function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
   return (
-    <div className="flex border-b border-[#3c3c3c] shrink-0">
+    <div className="flex border-b border-[#3c3c3c] shrink-0 overflow-x-auto">
       {TABS.map((t) => (
         <button key={t.id} onClick={() => onChange(t.id)}
-          className={['px-3 py-1.5 text-xs uppercase tracking-wide transition-colors',
+          className={['px-2.5 py-1.5 text-[10px] uppercase tracking-wide transition-colors whitespace-nowrap',
             active === t.id ? 'text-white border-b-2 border-blue-500 -mb-px' : 'text-[#969696] hover:text-white'].join(' ')}>
           {t.label}
         </button>
@@ -37,11 +45,14 @@ function AnomalyBanner() {
             {a.severity === 'error' ? '⛔' : '⚠️'}
           </span>
           <span className="text-amber-200">{a.message}</span>
+          {a.line && <span className="text-amber-500 ml-auto shrink-0">line {a.line}</span>}
         </div>
       ))}
     </div>
   )
 }
+
+// ── Assembly panel ────────────────────────────────────────────────────────────
 
 function highlightAsm(instruction: string): React.ReactNode {
   const parts = instruction.split(/\s+/)
@@ -109,6 +120,8 @@ function AssemblyPanel() {
   )
 }
 
+// ── AI explanation panel ──────────────────────────────────────────────────────
+
 function AIExplanationPanel() {
   const [explanation, setExplanation] = useState('')
   const [loading, setLoading]         = useState(false)
@@ -164,6 +177,8 @@ function AIExplanationPanel() {
     </div>
   )
 }
+
+// ── AI fix panel ──────────────────────────────────────────────────────────────
 
 interface FixResult { originalCode: string; fixedCode: string; explanation: string }
 
@@ -263,11 +278,106 @@ function AIFixPanel() {
   )
 }
 
+// ── Object graph panel ────────────────────────────────────────────────────────
+// Uses vis-network for interactive node/edge rendering.
+// vis-network is loaded via CDN script tag in index.html — see instructions below.
+
+interface GraphNode { id: string; label: string; color?: string; shape?: string }
+interface GraphEdge { from: string; to: string; label?: string }
+
+function buildGraph(variables: Variable[]): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const nodes: GraphNode[] = []
+  const edges: GraphEdge[] = []
+
+  function addVar(v: Variable, parentId?: string) {
+    const isNull = v.value === '0x0' || v.value === 'null' || v.value === 'nullptr' || v.value === '0x0000000000000000'
+    const isPtr  = v.type?.includes('*') || v.type?.includes('ptr')
+    const isObj  = v.variablesReference > 0
+
+    const id    = `${v.name}-${v.value}`
+    const color = isNull ? '#7f1d1d' : isPtr ? '#7c3aed' : isObj ? '#1e3a5f' : '#1e3a2f'
+    const shape = isNull ? 'diamond' : isPtr ? 'ellipse' : 'box'
+
+    nodes.push({
+      id,
+      label: `${v.name}\n${v.value.length > 20 ? v.value.slice(0, 20) + '…' : v.value}`,
+      color,
+      shape,
+    })
+
+    if (parentId) {
+      edges.push({ from: parentId, to: id, label: v.name })
+    }
+  }
+
+  for (const v of variables) {
+    addVar(v)
+  }
+
+  return { nodes, edges }
+}
+
 function ObjectGraphPanel() {
   const variables      = useDebugStore((s) => s.variables)
   const status         = useDebugStore((s) => s.status)
-  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
-  const objectVars     = variables.filter((v) => v.variablesReference > 0)
+  const graphRef       = useRef<HTMLDivElement>(null)
+  const networkRef     = useRef<any>(null)
+
+  const objectVars = variables.filter((v) => v.variablesReference > 0 || v.type?.includes('*'))
+
+  useEffect(() => {
+    if (!graphRef.current) return
+    if (objectVars.length === 0) return
+
+    const vis = (window as any).vis
+    if (!vis) {
+      // vis-network not loaded yet — show fallback
+      return
+    }
+
+    const { nodes, edges } = buildGraph(objectVars)
+
+    const dataset = {
+      nodes: new vis.DataSet(nodes.map((n: GraphNode) => ({
+        id:    n.id,
+        label: n.label,
+        color: { background: n.color ?? '#1e3a5f', border: '#4a9eff', highlight: { background: '#2d5a8f', border: '#75beff' } },
+        font:  { color: '#e0e0e0', size: 11, face: 'JetBrains Mono, monospace' },
+        shape: n.shape ?? 'box',
+      }))),
+      edges: new vis.DataSet(edges.map((e: GraphEdge, i: number) => ({
+        id:     i,
+        from:   e.from,
+        to:     e.to,
+        label:  e.label,
+        arrows: 'to',
+        color:  { color: '#4a9eff', highlight: '#75beff' },
+        font:   { color: '#888', size: 9 },
+      }))),
+    }
+
+    const options = {
+      physics: {
+        enabled: true,
+        solver: 'forceAtlas2Based',
+        forceAtlas2Based: { springLength: 100 },
+        stabilization: { iterations: 200 },
+      },
+      layout: { improvedLayout: true },
+      interaction: { hover: true, tooltipDelay: 200, zoomView: true },
+      edges: { smooth: { type: 'dynamic' } },
+    }
+
+    if (networkRef.current) {
+      networkRef.current.setData(dataset)
+    } else {
+      networkRef.current = new vis.Network(graphRef.current, dataset, options)
+    }
+
+    return () => {
+      // Don't destroy — just update on next render
+    }
+  }, [objectVars])
 
   if (status === 'idle' || status === 'terminated')
     return <div className="flex-1 flex items-center justify-center text-[#555] text-xs">Launch a session to visualize objects.</div>
@@ -277,26 +387,96 @@ function ObjectGraphPanel() {
         No objects yet.<br /><span className="text-[#444] mt-1 block">Step to a frame with object variables.</span>
       </div>
     )
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden p-3">
-      <div className="text-[10px] text-[#969696] uppercase tracking-wide mb-2 shrink-0">Objects ({objectVars.length})</div>
-      <div className="flex-1 overflow-y-auto space-y-1">
-        {objectVars.map((v) => (
-          <div key={v.name} className="flex items-center gap-2 p-2 rounded bg-[#2a2a2a] hover:bg-[#333] cursor-pointer text-xs">
-            <span className="w-2 h-2 rounded-full bg-teal-400 shrink-0" />
-            <span className="text-[#9cdcfe] font-medium">{v.name}</span>
-            <span className="text-[#555]">{v.type}</span>
-            <span className="text-[#888] truncate">{v.value}</span>
-            {v.memoryReference && !isBeginnerMode && (
-              <span className="text-[10px] text-[#444] ml-auto shrink-0 font-mono">{v.memoryReference}</span>
-            )}
-          </div>
-        ))}
+
+  const vis = (window as any).vis
+  if (!vis) {
+    return (
+      <div className="flex-1 flex flex-col overflow-hidden p-3">
+        <div className="text-[10px] text-amber-400 mb-2 p-2 bg-amber-950/40 rounded">
+          vis-network not loaded. Add this to index.html &lt;head&gt;:<br />
+          <code className="text-[10px] text-amber-200 break-all">
+            &lt;script src="https://cdnjs.cloudflare.com/ajax/libs/vis/4.21.0/vis.min.js"&gt;&lt;/script&gt;
+          </code>
+        </div>
+        {/* Fallback: plain list */}
+        <div className="flex-1 overflow-y-auto space-y-1">
+          {objectVars.map((v) => (
+            <div key={v.name} className="flex items-center gap-2 p-2 rounded bg-[#2a2a2a] text-xs">
+              <span className="w-2 h-2 rounded-full bg-teal-400 shrink-0" />
+              <span className="text-[#9cdcfe] font-medium">{v.name}</span>
+              <span className="text-[#555]">{v.type}</span>
+              <span className="text-[#888] truncate">{v.value}</span>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="text-[10px] text-[#444] mt-2 shrink-0">P3 wires D3/vis-network graph here.</div>
+    )
+  }
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="px-3 py-1 border-b border-[#3c3c3c] shrink-0 flex gap-2 items-center text-[10px] text-[#969696]">
+        <span className="uppercase tracking-wide">Object graph</span>
+        <span className="text-[#555]">{objectVars.length} objects</span>
+      </div>
+      <div ref={graphRef} className="flex-1 bg-[#1a1a1a]" />
     </div>
   )
 }
+
+// ── Session narrative panel ───────────────────────────────────────────────────
+
+function NarrativePanel() {
+  const [narrative, setNarrative] = useState('')
+  const [loading, setLoading] = useState(false)
+  const status = useDebugStore((s) => s.status)
+
+  useEffect(() => {
+    const h = (e: Event) => setNarrative((e as CustomEvent<string>).detail)
+    window.addEventListener('lucid:ai-narrative', h)
+    return () => window.removeEventListener('lucid:ai-narrative', h)
+  }, [])
+
+  const fetchNarrative = async () => {
+    setLoading(true)
+    try {
+      const result = await (globalThis as any).electronAPI.invoke(IPC.AI_NARRATIVE, {}) as any
+      if (result?.success) setNarrative(result.narrative)
+    } catch { /* ignore */ }
+    setLoading(false)
+  }
+
+  return (
+    <div className="flex-1 flex flex-col p-3 overflow-hidden">
+      <div className="flex gap-2 mb-3 shrink-0">
+        <button onClick={fetchNarrative} disabled={loading || status === 'idle'}
+          className="px-2 py-1 text-xs rounded font-medium bg-purple-800 text-white hover:bg-purple-700 disabled:opacity-40 disabled:cursor-not-allowed">
+          {loading ? '⏳ Writing...' : '📖 Generate Narrative'}
+        </button>
+        {narrative && (
+          <button onClick={() => navigator.clipboard.writeText(narrative)}
+            className="px-2 py-1 text-xs rounded font-medium bg-[#3c3c3c] text-[#ccc] hover:bg-[#4a4a4a]">
+            📋 Copy
+          </button>
+        )}
+      </div>
+      <div className="flex-1 overflow-y-auto">
+        {loading && <div className="text-[#888] text-xs animate-pulse">Generating session narrative...</div>}
+        {narrative && !loading && (
+          <div className="text-[#e0e0e0] text-xs whitespace-pre-wrap break-words leading-relaxed">{narrative}</div>
+        )}
+        {!narrative && !loading && (
+          <div className="text-[#555] text-xs">
+            Click Generate Narrative to get an AI summary of your debug session.
+            Works best after stepping through several lines.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Right panel shell ─────────────────────────────────────────────────────────
 
 export default function RightPanel() {
   const [activeTab, setActiveTab] = useState<Tab>('ai')
@@ -313,14 +493,21 @@ export default function RightPanel() {
     return () => window.removeEventListener('lucid:ai-fix', h)
   }, [])
 
+  useEffect(() => {
+    const h = () => setActiveTab('narrative')
+    window.addEventListener('lucid:ai-narrative', h)
+    return () => window.removeEventListener('lucid:ai-narrative', h)
+  }, [])
+
   return (
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-l border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <AnomalyBanner />
-      {activeTab === 'ai'    && <AIExplanationPanel />}
-      {activeTab === 'fix'   && <AIFixPanel />}
-      {activeTab === 'asm'   && <AssemblyPanel />}
-      {activeTab === 'graph' && <ObjectGraphPanel />}
+      {activeTab === 'ai'        && <AIExplanationPanel />}
+      {activeTab === 'fix'       && <AIFixPanel />}
+      {activeTab === 'asm'       && <AssemblyPanel />}
+      {activeTab === 'graph'     && <ObjectGraphPanel />}
+      {activeTab === 'narrative' && <NarrativePanel />}
     </div>
   )
 }

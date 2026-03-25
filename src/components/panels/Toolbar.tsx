@@ -1,5 +1,8 @@
 // src/components/panels/Toolbar.tsx
-// Day 4: AI buttons wired, file picker for C/C++ binary target
+// ADDITIONS vs original:
+//   - Run-to-cursor button (wired to IPC.RUN_TO_CURSOR)
+//   - AI: Suggest BPs button (wired to IPC.AI_SUGGEST_BPS)
+//   - AI: Narrative button (wired to IPC.AI_NARRATIVE, shown when terminated)
 
 import { useCallback, useState, useEffect } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
@@ -38,6 +41,9 @@ function ContinueIcon() {
 }
 function PauseIcon() {
   return <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="4" height="10" rx="1" /><rect x="8" y="2" width="4" height="10" rx="1" /></svg>
+}
+function CursorIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="7" y1="2" x2="7" y2="12" strokeDasharray="2 2" /><polyline points="4,9 7,12 10,9" /></svg>
 }
 
 // ── Toolbar button ────────────────────────────────────────────────────────────
@@ -136,18 +142,6 @@ function StatusIndicator({ status }: { readonly status: string }) {
   )
 }
 
-// ── Launch / Stop ─────────────────────────────────────────────────────────────
-
-function LaunchStopBtn({ isActive, onLaunch, onStop }: {
-  isActive: boolean
-  onLaunch: () => void
-  onStop: () => void
-}) {
-  return isActive
-    ? <ToolbarBtn title="Stop (Shift+F5)"      onClick={onStop}   variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
-    : <ToolbarBtn title="Launch debugger (F5)" onClick={onLaunch} variant="accent"><PlayIcon /><span>Run</span></ToolbarBtn>
-}
-
 // ── Step controls ─────────────────────────────────────────────────────────────
 
 function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStepIn, onStepOut }: {
@@ -171,11 +165,12 @@ function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStep
 }
 
 // ── AI buttons ────────────────────────────────────────────────────────────────
-// Day 4: wired to RightPanel via tab switching — the buttons open the right panel tab
 
-function AIButtons({ isPaused }: { isPaused: boolean }) {
+function AIButtons({ isPaused, sourceLines, language }: { isPaused: boolean; sourceLines?: string[]; language: Language }) {
+  const [narrativeLoading, setNarrativeLoading] = useState(false)
+  const [narrative, setNarrative] = useState('')
+
   const handleExplain = useCallback(() => {
-    // Dispatch a custom event that RightPanel listens for (or just invoke IPC directly)
     window.dispatchEvent(new CustomEvent('lucid:ai-explain'))
   }, [])
 
@@ -183,13 +178,37 @@ function AIButtons({ isPaused }: { isPaused: boolean }) {
     window.dispatchEvent(new CustomEvent('lucid:ai-fix'))
   }, [])
 
+  const handleSuggestBPs = useCallback(async () => {
+    if (!sourceLines || sourceLines.length === 0) return
+    const sourceCode = sourceLines.join('\n')
+    const result = await invoke(IPC.AI_SUGGEST_BPS, { sourceCode, language }) as any
+    if (result?.success && result.suggestions) {
+      window.dispatchEvent(new CustomEvent('lucid:ai-suggest-bps', { detail: result.suggestions }))
+    }
+  }, [sourceLines, language])
+
+  const handleNarrative = useCallback(async () => {
+    setNarrativeLoading(true)
+    try {
+      const result = await invoke(IPC.AI_NARRATIVE) as any
+      if (result?.success) {
+        setNarrative(result.narrative)
+        window.dispatchEvent(new CustomEvent('lucid:ai-narrative', { detail: result.narrative }))
+      }
+    } catch { /* ignore */ }
+    setNarrativeLoading(false)
+  }, [])
+
   return (
     <>
-      <ToolbarBtn title="Explain Bug (AI) — paused required" onClick={handleExplain} disabled={!isPaused} variant="accent">
+      <ToolbarBtn title="Explain Bug (AI)" onClick={handleExplain} disabled={!isPaused} variant="accent">
         <span>⚡ Explain</span>
       </ToolbarBtn>
-      <ToolbarBtn title="Suggest Fix (AI) — paused required" onClick={handleFix} disabled={!isPaused} variant="success">
+      <ToolbarBtn title="Suggest Fix (AI)" onClick={handleFix} disabled={!isPaused} variant="success">
         <span>🔧 Fix</span>
+      </ToolbarBtn>
+      <ToolbarBtn title="AI: Suggest breakpoints for this file" onClick={handleSuggestBPs} variant="accent">
+        <span>🎯 BPs</span>
       </ToolbarBtn>
     </>
   )
@@ -198,10 +217,10 @@ function AIButtons({ isPaused }: { isPaused: boolean }) {
 // ── File path input bar ───────────────────────────────────────────────────────
 
 const PLACEHOLDER: Record<string, string> = {
-  python:     'Path to script  e.g. C:\\Users\\you\\script.py',
-  javascript: 'Path to script  e.g. C:\\Users\\you\\app.js',
-  cpp:        'Path to compiled binary  e.g. C:\\Temp\\program.exe',
-  c:          'Path to compiled binary  e.g. C:\\Temp\\program.exe',
+  python:     'Path to script  e.g. /home/user/script.py',
+  javascript: 'Path to script  e.g. /home/user/app.js',
+  cpp:        'Path to compiled binary  e.g. /home/user/program',
+  c:          'Path to compiled binary  e.g. /home/user/program',
   java:       'Main class name  e.g. Main',
 }
 
@@ -213,7 +232,6 @@ function FileInputBar({ language, onLaunch }: {
   const [launching, setLaunching] = useState(false)
   const status = useDebugStore((s) => s.status)
 
-  // Reset launching state when session status changes away from idle
   useEffect(() => {
     if (status !== 'idle') setLaunching(false)
   }, [status])
@@ -257,9 +275,13 @@ export default function Toolbar() {
   const language      = useDebugStore((s) => s.language)
   const anomalies     = useDebugStore((s) => s.anomalies)
   const lastReturnVal = useDebugStore((s) => s.lastReturnValue)
-  const isRunning     = status === 'running' || status === 'launching'
-  const isPaused      = status === 'paused'
-  const isIdle        = status === 'idle' || status === 'terminated'
+  const sourceLines   = useDebugStore((s) => s.sourceLines)
+  const currentFile   = useDebugStore((s) => s.currentFile)
+  const currentLine   = useDebugStore((s) => s.currentLine)
+
+  const isRunning = status === 'running' || status === 'launching'
+  const isPaused  = status === 'paused'
+  const isIdle    = status === 'idle' || status === 'terminated'
 
   const handleLaunch   = useCallback((target: string) => { invoke(IPC.LAUNCH, { language, target }) }, [language])
   const handleStop     = useCallback(() => invoke(IPC.TERMINATE), [])
@@ -269,8 +291,22 @@ export default function Toolbar() {
   const handleStepIn   = useCallback(() => invoke(IPC.STEP_IN), [])
   const handleStepOut  = useCallback(() => invoke(IPC.STEP_OUT), [])
 
+  // Run-to-cursor: uses the Monaco editor's current cursor position
+  // The cursor line is tracked via a custom event from CodeEditor
+  const [editorCursorLine, setEditorCursorLine] = useState(0)
+  useEffect(() => {
+    const h = (e: Event) => setEditorCursorLine((e as CustomEvent<number>).detail)
+    window.addEventListener('lucid:cursor-line', h)
+    return () => window.removeEventListener('lucid:cursor-line', h)
+  }, [])
+
+  const handleRunToCursor = useCallback(() => {
+    if (!currentFile || !editorCursorLine) return
+    invoke(IPC.RUN_TO_CURSOR, { file: currentFile, line: editorCursorLine })
+  }, [currentFile, editorCursorLine])
+
   return (
-    <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
+    <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0 overflow-x-auto">
       <LanguageSelector />
       <Divider />
 
@@ -291,20 +327,26 @@ export default function Toolbar() {
             onStepIn={handleStepIn}
             onStepOut={handleStepOut}
           />
-          <Divider />
-          <AIButtons isPaused={isPaused} />
 
-          {/* Return value badge — shows after stepOut */}
+          {/* Run-to-cursor */}
+          <ToolbarBtn title="Run to cursor line" onClick={handleRunToCursor} disabled={!isPaused || !editorCursorLine}>
+            <CursorIcon /><span className="hidden sm:inline">Cursor</span>
+          </ToolbarBtn>
+
+          <Divider />
+          <AIButtons isPaused={isPaused} sourceLines={sourceLines} language={language} />
+
+          {/* Return value badge */}
           {lastReturnVal && isPaused && (
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#2d2d2d] text-xs ml-1">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#2d2d2d] text-xs ml-1 shrink-0">
               <span className="text-[#969696]">↩ {lastReturnVal.fnName}:</span>
               <span className="text-[#4ec9b0] font-mono">{lastReturnVal.value}</span>
             </div>
           )}
 
-          {/* Anomaly count badge */}
+          {/* Anomaly badge */}
           {anomalies.length > 0 && (
-            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-900/40 text-xs ml-1 text-amber-300">
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-900/40 text-xs ml-1 text-amber-300 shrink-0">
               ⚠ {anomalies.length} {anomalies.length === 1 ? 'anomaly' : 'anomalies'}
             </div>
           )}

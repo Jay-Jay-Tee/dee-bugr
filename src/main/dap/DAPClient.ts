@@ -1,4 +1,6 @@
 // src/main/dap/DAPClient.ts
+// FIX: initialize() now accepts adapterID parameter (was hardcoded 'python')
+
 import * as net from 'node:net';
 import { EventEmitter } from 'node:events';
 
@@ -39,7 +41,6 @@ export class DAPClient extends EventEmitter {
       this.socket.on('error', (err: Error) => {
         console.error('[DAP] Socket error:', err.message);
         this.emit('error', err);
-        // Reject all pending requests
         this.pending.forEach(p => p.reject(err));
         this.pending.clear();
       });
@@ -56,7 +57,6 @@ export class DAPClient extends EventEmitter {
         resolve();
       });
 
-      // Timeout after 10 seconds
       setTimeout(() => {
         if (!this.connected) {
           reject(new Error(`[DAP] Connection timeout to ${host}:${port}`));
@@ -72,7 +72,6 @@ export class DAPClient extends EventEmitter {
   }
 
   // ── SEND A REQUEST ────────────────────────────────────────
-  // This is the core method. Everything else calls this.
   request(command: string, args?: any): Promise<any> {
     return new Promise((resolve, reject) => {
       if (!this.socket || !this.connected) {
@@ -91,7 +90,6 @@ export class DAPClient extends EventEmitter {
       this.pending.set(seq, { resolve, reject, command });
       this.sendRaw(message);
 
-      // Timeout individual requests after 30 seconds
       setTimeout(() => {
         if (this.pending.has(seq)) {
           this.pending.delete(seq);
@@ -116,20 +114,16 @@ export class DAPClient extends EventEmitter {
   }
 
   // ── PARSE INCOMING DATA ───────────────────────────────────
-  // DAP uses length-prefixed framing. Packets can be split
-  // across multiple TCP chunks so we buffer and reassemble.
   private onData(chunk: Buffer) {
     this.buffer = Buffer.concat([this.buffer, chunk]);
 
     while (true) {
-      // Look for Content-Length header
       const headerEnd = this.buffer.indexOf('\r\n\r\n');
-      if (headerEnd === -1) break; // incomplete header
+      if (headerEnd === -1) break;
 
       const header = this.buffer.slice(0, headerEnd).toString('ascii');
       const match = header.match(/Content-Length:\s*(\d+)/i);
       if (!match) {
-        // Malformed — discard and try to recover
         this.buffer = this.buffer.slice(headerEnd + 4);
         continue;
       }
@@ -138,10 +132,8 @@ export class DAPClient extends EventEmitter {
       const messageStart = headerEnd + 4;
       const messageEnd = messageStart + contentLength;
 
-      // Not enough data yet — wait for more chunks
       if (this.buffer.length < messageEnd) break;
 
-      // Extract and parse the message
       const messageJson = this.buffer.slice(messageStart, messageEnd).toString('utf8');
       this.buffer = this.buffer.slice(messageEnd);
 
@@ -170,20 +162,19 @@ export class DAPClient extends EventEmitter {
       }
     } else if (message.type === 'event') {
       console.log(`[DAP] ← EVENT: ${message.event}`);
-      // Emit the event so DAPSession can handle it
       this.emit('event', message);
       this.emit(`event:${message.event}`, message.body);
     }
   }
 
   // ── CONVENIENCE WRAPPERS ──────────────────────────────────
-  // Use these instead of request() directly
 
-  async initialize() {
+  // FIX: adapterID is now a parameter, not hardcoded to 'python'
+  async initialize(adapterID = 'generic') {
     return this.request('initialize', {
       clientID: 'lucid',
       clientName: 'Lucid Debugger',
-      adapterID: 'python',
+      adapterID,
       pathFormat: 'path',
       linesStartAt1: true,
       columnsStartAt1: true,
@@ -262,7 +253,7 @@ export class DAPClient extends EventEmitter {
   }
 
   async variables(variablesReference: number) {
-    return this.request('variables', { 
+    return this.request('variables', {
       variablesReference,
       filter: 'named',
     });
@@ -280,7 +271,7 @@ export class DAPClient extends EventEmitter {
     return this.request('disassemble', {
       memoryReference,
       offset: 0,
-      instructionOffset: -10,
+      instructionOffset: 0,   // FIX: was -10, now 0 — start from the actual instruction pointer
       instructionCount: count,
       resolveSymbols: true,
     });

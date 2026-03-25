@@ -1,11 +1,12 @@
 // src/components/panels/CodeEditor.tsx
+// FIX: guard breakpoint click — don't set breakpoints on empty/mock file path
 
 import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
 import type { OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { useDebugStore } from '../../renderer/store/debugStore'
-import { MOCK_SOURCE_LINES, MOCK_DEBUG_STATE } from '../../renderer/mockData'
+import { MOCK_SOURCE_LINES } from '../../renderer/mockData'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -48,15 +49,11 @@ function buildOverlayText(vars: { name: string; value: string }[]): string {
     .join('   ')
 }
 
-// Derives a map of line → last known variable snapshot for the current file,
-// excluding the current execution line (which gets its own live overlay).
 function buildHistoryOverlays(
   executionHistory: { file: string; line: number; variables: Record<string, { value: string; changed: boolean }> }[],
   currentFile: string,
   currentLine: number,
 ): Map<number, { text: string; hasChanged: boolean }> {
-  // Walk history in order so later entries overwrite earlier ones —
-  // each line shows the most recent values from the last time it was visited.
   const result = new Map<number, { text: string; hasChanged: boolean }>()
 
   for (const entry of executionHistory) {
@@ -109,8 +106,17 @@ export default function CodeEditor() {
         e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
       if (!isGutter || !e.target.position) return
       const line = e.target.position.lineNumber
+
       const { currentFile: file, toggleBreakpoint } = storeRef.current()
-      toggleBreakpoint(file || MOCK_DEBUG_STATE.currentFile, line)
+
+      // FIX: only set breakpoints when we have a real file path from a live session.
+      // Clicking the gutter before launch used to silently set BPs on the mock file.
+      if (!file) {
+        console.warn('[CodeEditor] No active file — launch a session before setting breakpoints')
+        return
+      }
+
+      toggleBreakpoint(file, line)
     })
   }, [])
 
@@ -121,8 +127,9 @@ export default function CodeEditor() {
     if (!monaco || !col) return
 
     const { currentFile: file } = storeRef.current()
-    const modelFile = file || MOCK_DEBUG_STATE.currentFile
-    const relevant  = breakpoints.filter((bp) => bp.file === modelFile)
+    if (!file) { col.set([]); return }
+
+    const relevant = breakpoints.filter((bp) => bp.file === file)
 
     col.set(relevant.map((bp) => ({
       range: new monaco.Range(bp.line, 1, bp.line, 1),
@@ -191,9 +198,6 @@ export default function CodeEditor() {
   }, [variables, currentLine])
 
   // ── History overlays (past lines) ─────────────────────────────────────────
-  // Shows the last known variable values on every previously visited line,
-  // dimmer than the current overlay. Lines where a value changed get a
-  // separate CSS class so they can be styled distinctly.
   useEffect(() => {
     const monaco = monacoRef.current
     const col    = historyCollectionRef.current
@@ -205,8 +209,9 @@ export default function CodeEditor() {
     }
 
     const { currentFile: file } = storeRef.current()
-    const modelFile = file || MOCK_DEBUG_STATE.currentFile
-    const historyMap = buildHistoryOverlays(executionHistory, modelFile, currentLine)
+    if (!file) { col.set([]); return }
+
+    const historyMap = buildHistoryOverlays(executionHistory, file, currentLine)
 
     col.set(
       [...historyMap.entries()].map(([line, { text, hasChanged }]) => ({

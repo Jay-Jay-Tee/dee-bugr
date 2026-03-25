@@ -1,6 +1,11 @@
 // src/components/panels/LeftPanel.tsx
+// FIXES vs original:
+//   1. Watch expression input now wired — evaluates via IPC.EVALUATE on Enter
+//   2. handleThreadChange uses IPC.SWITCH_THREAD instead of hardcoded string
+//   3. REPL/evaluate input added at bottom of variables panel
+//   4. AI variable tooltip on hover (beginner mode)
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
 import { IPC } from '../../shared/ipc'
@@ -9,11 +14,12 @@ import BreakpointPanel from './BreakpointPanel'
 
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
-function invoke(channel: typeof IPC[keyof typeof IPC], args?: unknown) {
-  const api = (window as Window & {
-    electronAPI?: { invoke: (ch: typeof IPC[keyof typeof IPC], payload?: unknown) => Promise<unknown> }
-  }).electronAPI
+type AnyIPC = typeof IPC[keyof typeof IPC]
 
+function invoke(channel: AnyIPC, args?: unknown) {
+  const api = (window as Window & {
+    electronAPI?: { invoke: (ch: AnyIPC, payload?: unknown) => Promise<unknown> }
+  }).electronAPI
   return api?.invoke(channel, args)
     .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
 }
@@ -76,15 +82,19 @@ function typeColor(type: string): string {
 interface VariableRowProps {
   variable: Variable
   depth?: number
+  isBeginnerMode?: boolean
 }
 
-function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
+function VariableRow({ variable, depth = 0, isBeginnerMode = false }: Readonly<VariableRowProps>) {
   const [expanded,     setExpanded]     = useState(false)
   const [liveChildren, setLiveChildren] = useState<Variable[] | null>(null)
+  const [tooltip,      setTooltip]      = useState('')
+  const [tooltipVis,   setTooltipVis]   = useState(false)
+  const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const hasChildren = variable.variablesReference > 0
   const children    = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
-  const isNull      = variable.value === '0x0000000000000000' || variable.value === 'nullptr'
+  const isNull      = variable.value === '0x0000000000000000' || variable.value === 'nullptr' || variable.value === '0x0'
 
   const handleExpand = useCallback(async () => {
     if (!hasChildren) return
@@ -95,15 +105,37 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
     setExpanded((e) => !e)
   }, [hasChildren, expanded, liveChildren, variable.variablesReference])
 
+  // AI tooltip on hover (beginner mode)
+  const handleMouseEnter = useCallback(() => {
+    if (!isBeginnerMode) return
+    hoverTimer.current = setTimeout(async () => {
+      try {
+        const result = await invoke(IPC.AI_EXPLAIN_VAR, { varName: variable.name }) as any
+        if (result?.success && result.explanation) {
+          setTooltip(result.explanation)
+          setTooltipVis(true)
+        }
+      } catch { /* ignore */ }
+    }, 600)
+  }, [isBeginnerMode, variable.name])
+
+  const handleMouseLeave = useCallback(() => {
+    if (hoverTimer.current) clearTimeout(hoverTimer.current)
+    setTooltipVis(false)
+    setTooltip('')
+  }, [])
+
   return (
     <>
       <div
         className={[
-          'flex items-start gap-1 py-0.5 hover:bg-[#2a2d2e] cursor-default text-xs font-mono',
+          'relative flex items-start gap-1 py-0.5 hover:bg-[#2a2d2e] cursor-default text-xs font-mono',
           isNull ? 'bg-red-950/20' : '',
         ].join(' ')}
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={handleExpand}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
       >
         <span className="w-3 shrink-0 text-[#969696]">
           {hasChildren ? (expanded ? '▾' : '▸') : ' '}
@@ -113,42 +145,138 @@ function VariableRow({ variable, depth = 0 }: Readonly<VariableRowProps>) {
           {variable.value}
         </span>
         <span className="text-[#4ec9b0] w-28 shrink-0 truncate text-right pr-2">
-          {variable.type}
+          {isBeginnerMode ? humanType(variable.type) : variable.type}
         </span>
+
+        {/* AI tooltip popover */}
+        {tooltipVis && tooltip && (
+          <div className="absolute left-0 top-full z-50 bg-[#252526] border border-[#3c3c3c] rounded shadow-lg p-2 text-[11px] text-[#cccccc] max-w-xs whitespace-normal leading-relaxed"
+            style={{ marginTop: 2, marginLeft: 8 + depth * 16 }}>
+            {tooltip}
+          </div>
+        )}
       </div>
       {expanded && children.map((child) => (
-        <VariableRow key={child.name} variable={child} depth={depth + 1} />
+        <VariableRow key={child.name} variable={child} depth={depth + 1} isBeginnerMode={isBeginnerMode} />
       ))}
     </>
   )
 }
 
+// Beginner mode: translate raw C types to plain English
+function humanType(type: string): string {
+  if (/^(int|short|long|int32|int64)/.test(type)) return 'whole number'
+  if (/^(float|double)/.test(type))               return 'decimal'
+  if (/^bool/.test(type))                         return 'true/false'
+  if (/^(char \*|std::string|string|str)/.test(type)) return 'text'
+  if (/\*/.test(type))                            return 'pointer'
+  return type
+}
+
 function VariablesPanel() {
-  const vars   = useDebugStore((s) => s.variables)
-  const status = useDebugStore((s) => s.status)
+  const vars          = useDebugStore((s) => s.variables)
+  const status        = useDebugStore((s) => s.status)
+  const watchValues   = useDebugStore((s) => s.watchValues)
+  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
+
+  // Watch expression state
+  const [watchExpr, setWatchExpr] = useState('')
+  const [watchResults, setWatchResults] = useState<{ expr: string; value: string }[]>([])
+
+  // REPL state
+  const [replInput,  setReplInput]  = useState('')
+  const [replOutput, setReplOutput] = useState<{ expr: string; result: string }[]>([])
+
+  const isPaused = status === 'paused'
+
+  // FIX: wire watch expression — evaluate on Enter
+  const handleWatchSubmit = useCallback(async () => {
+    if (!watchExpr.trim() || !isPaused) return
+    const result = await invoke(IPC.EVALUATE, { expr: watchExpr }) as string | undefined
+    const value = typeof result === 'string' ? result : '(no result)'
+    setWatchResults(prev => [...prev, { expr: watchExpr, value }])
+    setWatchExpr('')
+  }, [watchExpr, isPaused])
+
+  // FIX: wire REPL evaluate on Enter
+  const handleReplSubmit = useCallback(async () => {
+    if (!replInput.trim() || !isPaused) return
+    const result = await invoke(IPC.EVALUATE, { expr: replInput }) as string | undefined
+    const value = typeof result === 'string' ? result : '(no result)'
+    setReplOutput(prev => [...prev.slice(-19), { expr: replInput, result: value }])
+    setReplInput('')
+  }, [replInput, isPaused])
 
   return (
     <div className="flex flex-col h-full">
+      {/* Header row */}
       <div className="flex gap-1 px-2 py-1 text-[10px] uppercase tracking-wide text-[#969696] border-b border-[#3c3c3c] shrink-0">
         <span className="w-3 shrink-0" />
         <span className="w-28 shrink-0">Name</span>
         <span className="flex-1">Value</span>
         <span className="w-28 shrink-0 text-right pr-2">Type</span>
       </div>
-      <div className="flex-1 overflow-y-auto">
+
+      {/* Variable list */}
+      <div className="flex-1 overflow-y-auto min-h-0">
         {vars.length === 0 ? (
           <div className="p-3 text-xs text-[#555]">
             {status === 'idle' ? 'Launch a debug session to see variables' : 'No variables in scope'}
           </div>
         ) : (
-          vars.map((v) => <VariableRow key={v.name} variable={v} />)
+          vars.map((v) => <VariableRow key={v.name} variable={v} isBeginnerMode={isBeginnerMode} />)
+        )}
+
+        {/* Watch results */}
+        {watchResults.length > 0 && (
+          <div className="border-t border-[#3c3c3c] mt-1">
+            <div className="px-2 py-0.5 text-[9px] uppercase tracking-wide text-[#4ec9b0]">Watch</div>
+            {watchResults.map((w, i) => (
+              <div key={i} className="flex items-center gap-2 px-3 py-0.5 text-xs font-mono text-[#cccccc] hover:bg-[#2a2d2e]">
+                <span className="text-[#9cdcfe] w-28 shrink-0 truncate">{w.expr}</span>
+                <span className="flex-1 truncate text-[#dcdcaa]">{w.value}</span>
+                <button onClick={() => setWatchResults(p => p.filter((_, j) => j !== i))}
+                  className="text-[#555] hover:text-red-400 text-[10px] shrink-0">✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* REPL history */}
+        {replOutput.length > 0 && (
+          <div className="border-t border-[#3c3c3c] mt-1">
+            <div className="px-2 py-0.5 text-[9px] uppercase tracking-wide text-[#75beff]">REPL</div>
+            {replOutput.map((r, i) => (
+              <div key={i} className="px-3 py-0.5 text-xs font-mono">
+                <span className="text-[#969696]">&gt; {r.expr}</span>
+                <div className="text-[#4ec9b0] pl-2">{r.result}</div>
+              </div>
+            ))}
+          </div>
         )}
       </div>
-      <div className="border-t border-[#3c3c3c] px-2 py-1.5 shrink-0">
+
+      {/* Watch input */}
+      <div className="border-t border-[#3c3c3c] px-2 py-1 shrink-0">
         <input
-          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="Watch expression (Day 4)"
-          disabled
+          className="w-full bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-yellow-500 font-mono disabled:opacity-40"
+          placeholder={isPaused ? 'Watch expression, Enter to add' : 'Watch (pause first)'}
+          value={watchExpr}
+          onChange={e => setWatchExpr(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleWatchSubmit() }}
+          disabled={!isPaused}
+        />
+      </div>
+
+      {/* REPL input */}
+      <div className="border-t border-[#3c3c3c] px-2 py-1 shrink-0">
+        <input
+          className="w-full bg-[#2d2d2d] text-xs text-white placeholder:text-[#555] px-2 py-1 rounded outline-none focus:ring-1 focus:ring-blue-500 font-mono disabled:opacity-40"
+          placeholder={isPaused ? '> evaluate expression' : 'REPL (pause first)'}
+          value={replInput}
+          onChange={e => setReplInput(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') handleReplSubmit() }}
+          disabled={!isPaused}
         />
       </div>
     </div>
@@ -173,10 +301,11 @@ function CallStackPanel() {
     invoke(IPC.SWITCH_FRAME, { frameId: frame.id })
   }, [])
 
+  // FIX: use IPC.SWITCH_THREAD constant instead of hardcoded string
   const handleThreadChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
     const threadId = Number(e.target.value)
     if (!isNaN(threadId)) {
-      invoke('dap:switchThread' as any, { threadId })
+      invoke(IPC.SWITCH_THREAD, { threadId })
     }
   }, [])
 
