@@ -29,7 +29,7 @@
     "src/renderer",
     "src/shared",
     "src/renderer/global.d.ts"
-  ],
+, "src/components/panels/VariableHistoryPanel", "src/components/panels/ObjectGraphPanel"  ],
 
   "references": [
     { "path": "./tsconfig.node.json" }

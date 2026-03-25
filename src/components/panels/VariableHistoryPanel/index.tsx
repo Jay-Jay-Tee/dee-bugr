@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useDebugStore } from '../../store/debugStore'
+import { useDebugStore } from '../../../renderer/store/debugStore'
 import type { HistoryEntry } from '../../../shared/types'
 import VariableSelector from './VariableSelector'
 import VariableChart from './VariableChart'
