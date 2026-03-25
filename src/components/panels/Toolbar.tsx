@@ -1,14 +1,12 @@
 // src/components/panels/Toolbar.tsx
-// ADDITIONS vs original:
-//   - Run-to-cursor button (wired to IPC.RUN_TO_CURSOR)
-//   - AI: Suggest BPs button (wired to IPC.AI_SUGGEST_BPS)
-//   - AI: Narrative button (wired to IPC.AI_NARRATIVE, shown when terminated)
 
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
 import type { Language } from '../../shared/types'
+
+// ── IPC helper ────────────────────────────────────────────────────────────────
 
 function invoke(channel: IPCChannel, args?: unknown) {
   const api = (window as Window & {
@@ -42,10 +40,16 @@ function ContinueIcon() {
 function PauseIcon() {
   return <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><rect x="2" y="2" width="4" height="10" rx="1" /><rect x="8" y="2" width="4" height="10" rx="1" /></svg>
 }
-function CursorIcon() {
-  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="7" y1="2" x2="7" y2="12" strokeDasharray="2 2" /><polyline points="4,9 7,12 10,9" /></svg>
+// Day 5: Run to Cursor icon — arrow pointing to a horizontal line
+function RunToCursorIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="2" y1="11" x2="12" y2="11" /><line x1="7" y1="2" x2="7" y2="9" /><polyline points="4,7 7,10 10,7" /></svg>
 }
-
+function JumpToLineIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><line x1="2" y1="7" x2="10" y2="7" /><polyline points="7,4 10,7 7,10" /><line x1="12" y1="2" x2="12" y2="12" /></svg>
+}
+function ReturnNowIcon() {
+  return <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="4,4 2,7 4,10" /><path d="M2 7 h7 a3 3 0 0 0 0-6 h-1" /></svg>
+}
 // ── Toolbar button ────────────────────────────────────────────────────────────
 
 interface ToolbarBtnProps {
@@ -53,14 +57,13 @@ interface ToolbarBtnProps {
   disabled?: boolean
   title: string
   children: React.ReactNode
-  variant?: 'default' | 'danger' | 'accent' | 'success'
+  variant?: 'default' | 'danger' | 'accent'
 }
 
 const VARIANT_CLASS = {
   default: 'text-[#cccccc] hover:bg-[#3c3c3c] hover:text-white',
   danger:  'text-[#f48771] hover:bg-[#f48771]/10',
   accent:  'text-[#75beff] hover:bg-[#75beff]/10',
-  success: 'text-[#4ec9b0] hover:bg-[#4ec9b0]/10',
 } as const
 
 function ToolbarBtn({ onClick, disabled, title, children, variant = 'default' }: Readonly<ToolbarBtnProps>) {
@@ -105,7 +108,7 @@ function LanguageSelector() {
   )
 }
 
-// ── Mode toggle ───────────────────────────────────────────────────────────────
+// ── Beginner / Expert toggle ──────────────────────────────────────────────────
 
 function ModeToggle() {
   const isBeginnerMode     = useDebugStore((s) => s.isBeginnerMode)
@@ -142,43 +145,59 @@ function StatusIndicator({ status }: { readonly status: string }) {
   )
 }
 
+// ── Launch / Stop ─────────────────────────────────────────────────────────────
+
+function LaunchStopBtn({ isActive, onLaunch, onStop }: {
+  isActive: boolean
+  onLaunch: () => void
+  onStop:   () => void
+}) {
+  return isActive
+    ? <ToolbarBtn title="Stop (Shift+F5)"      onClick={onStop}   variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
+    : <ToolbarBtn title="Launch debugger (F5)" onClick={onLaunch} variant="accent"><PlayIcon /><span>Run</span></ToolbarBtn>
+}
+
 // ── Step controls ─────────────────────────────────────────────────────────────
 
-function StepControls({ isPaused, isRunning, onContinue, onPause, onNext, onStepIn, onStepOut }: {
-  readonly isPaused: boolean
-  readonly isRunning: boolean
-  readonly onContinue: () => void
-  readonly onPause: () => void
-  readonly onNext: () => void
-  readonly onStepIn: () => void
-  readonly onStepOut: () => void
-}) {
+interface StepControlsProps {
+  isPaused:      boolean
+  isRunning:     boolean
+  onContinue:    () => void
+  onPause:       () => void
+  onNext:        () => void
+  onStepIn:      () => void
+  onStepOut:     () => void
+  onRunToCursor: () => void
+  onJumpToLine:  () => void
+  onReturnNow:   () => void
+}
+
+function StepControls({
+  isPaused, isRunning,
+  onContinue, onPause, onNext, onStepIn, onStepOut, onRunToCursor, onJumpToLine, onReturnNow,
+}: Readonly<StepControlsProps>) {
   return (
     <>
-      <ToolbarBtn title="Continue (F5)"        onClick={onContinue} disabled={!isPaused}><ContinueIcon /></ToolbarBtn>
-      <ToolbarBtn title="Pause"                onClick={onPause}    disabled={!isRunning}><PauseIcon /></ToolbarBtn>
-      <ToolbarBtn title="Step Over (F10)"      onClick={onNext}     disabled={!isPaused}><StepOverIcon /></ToolbarBtn>
-      <ToolbarBtn title="Step Into (F11)"      onClick={onStepIn}   disabled={!isPaused}><StepInIcon /></ToolbarBtn>
-      <ToolbarBtn title="Step Out (Shift+F11)" onClick={onStepOut}  disabled={!isPaused}><StepOutIcon /></ToolbarBtn>
+      <ToolbarBtn title="Continue (F5)"              onClick={onContinue}    disabled={!isPaused}><ContinueIcon /></ToolbarBtn>
+      <ToolbarBtn title="Pause"                      onClick={onPause}       disabled={!isRunning}><PauseIcon /></ToolbarBtn>
+      <ToolbarBtn title="Step Over (F10)"            onClick={onNext}        disabled={!isPaused}><StepOverIcon /></ToolbarBtn>
+      <ToolbarBtn title="Step Into (F11)"            onClick={onStepIn}      disabled={!isPaused}><StepInIcon /></ToolbarBtn>
+      <ToolbarBtn title="Step Out (Shift+F11)"       onClick={onStepOut}     disabled={!isPaused}><StepOutIcon /></ToolbarBtn>
+      <ToolbarBtn title="Run to Cursor (Ctrl+F10)"   onClick={onRunToCursor} disabled={!isPaused}><RunToCursorIcon /></ToolbarBtn>
+      <ToolbarBtn title="Jump to Line"               onClick={onJumpToLine}  disabled={!isPaused}><JumpToLineIcon /></ToolbarBtn>
+      <ToolbarBtn title="Return Now"                 onClick={onReturnNow}   disabled={!isPaused}><ReturnNowIcon /></ToolbarBtn>
     </>
   )
 }
 
 // ── AI buttons ────────────────────────────────────────────────────────────────
 
-<<<<<<< HEAD
-function AIButtons({ isPaused }: {readonly isPaused: boolean }) {
-  const handleExplain = useCallback(() => {
-    // Dispatch a custom event that RightPanel listens for (or just invoke IPC directly)
-    globalThis.dispatchEvent(new CustomEvent('lucid:ai-explain'))
-=======
 function AIButtons({ isPaused, sourceLines, language }: { isPaused: boolean; sourceLines?: string[]; language: Language }) {
   const [narrativeLoading, setNarrativeLoading] = useState(false)
   const [narrative, setNarrative] = useState('')
 
   const handleExplain = useCallback(() => {
     window.dispatchEvent(new CustomEvent('lucid:ai-explain'))
->>>>>>> 9e3b12f5387ffaf5effc0624818168330c341530
   }, [])
 
   const handleFix = useCallback(() => {
@@ -308,39 +327,38 @@ export default function Toolbar() {
   }, [])
 
   const handleRunToCursor = useCallback(() => {
-    if (!currentFile || !editorCursorLine) return
-    invoke(IPC.RUN_TO_CURSOR, { file: currentFile, line: editorCursorLine })
-  }, [currentFile, editorCursorLine])
+    if (!currentFile || !currentLine) return
+    invoke(IPC.RUN_TO_CURSOR, { file: currentFile, line: currentLine })
+  }, [currentFile, currentLine])
 
+  const handleJumpToLine = useCallback(() => {
+    if (!currentFile || !currentLine) return
+    invoke(IPC.GOTO_LINE, { file: currentFile, line: currentLine })
+  }, [currentFile, currentLine])
+
+  const handleReturnNow = useCallback(() => {
+    invoke(IPC.RETURN_NOW)
+  }, [])
+  
   return (
-    <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0 overflow-x-auto">
+    <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
       <LanguageSelector />
       <Divider />
-
-      {isIdle ? (
-        <FileInputBar language={language} onLaunch={handleLaunch} />
-      ) : (
-        <>
-          <ToolbarBtn title="Stop (Shift+F5)" onClick={handleStop} variant="danger">
-            <StopIcon /><span>Stop</span>
-          </ToolbarBtn>
-          <Divider />
-          <StepControls
-            isPaused={isPaused}
-            isRunning={isRunning}
-            onContinue={handleContinue}
-            onPause={handlePause}
-            onNext={handleNext}
-            onStepIn={handleStepIn}
-            onStepOut={handleStepOut}
-          />
-
-          {/* Run-to-cursor */}
-          <ToolbarBtn title="Run to cursor line" onClick={handleRunToCursor} disabled={!isPaused || !editorCursorLine}>
-            <CursorIcon /><span className="hidden sm:inline">Cursor</span>
-          </ToolbarBtn>
-
-          <Divider />
+      <LaunchStopBtn isActive={isRunning || isPaused} onLaunch={handleLaunch} onStop={handleStop} />
+      <Divider />
+      <StepControls
+        isPaused={isPaused}
+        isRunning={isRunning}
+        onContinue={handleContinue}
+        onPause={handlePause}
+        onNext={handleNext}
+        onStepIn={handleStepIn}
+        onStepOut={handleStepOut}
+        onRunToCursor={handleRunToCursor}
+        onJumpToLine={handleJumpToLine}
+        onReturnNow={handleReturnNow}
+      />
+      <Divider />
           <AIButtons isPaused={isPaused} sourceLines={sourceLines} language={language} />
 
           {/* Return value badge */}
@@ -358,13 +376,11 @@ export default function Toolbar() {
             </div>
           )}
 
-          <div className="flex-1" />
-        </>
-      )}
-
+      <div className="flex-1" />
       <ModeToggle />
       <div className="w-2" />
       <StatusIndicator status={status} />
     </div>
   )
 }
+
