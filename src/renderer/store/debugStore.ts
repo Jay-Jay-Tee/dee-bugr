@@ -222,3 +222,22 @@ export function cleanupIPCListeners() {
   unsubscribers.length = 0
   listenersInitialized = false
 }
+
+// // data just for testing,delete afterwards
+// // ── TEMP TEST: inject mock state ──────────────────────────────────────────────
+// if (import.meta.env.DEV) {
+//   setTimeout(() => {
+//     useDebugStore.getState().setState({
+//       ...useDebugStore.getState(),
+//       status: 'paused',
+//       variables: [
+//         { name: 'user',   value: 'User',    type: 'object', variablesReference: 1, memoryReference: undefined, expensive: false },
+//         { name: 'user',   value: 'apple',    type: 'object', variablesReference: 1, memoryReference: undefined, expensive: false },
+//         { name: 'count',  value: '40',      type: 'int',    variablesReference: 0, memoryReference: undefined, expensive: false },
+//         { name: 'name',   value: '"Alice"', type: 'string', variablesReference: 0, memoryReference: undefined, expensive: false },
+//         { name: 'active', value: 'true',    type: 'bool',   variablesReference: 0, memoryReference: undefined, expensive: false },
+//         { name: 'items',  value: '[1,2,3]', type: 'list',   variablesReference: 2, memoryReference: undefined, expensive: false },
+//       ],
+//     })
+//   }, 500)
+// }
