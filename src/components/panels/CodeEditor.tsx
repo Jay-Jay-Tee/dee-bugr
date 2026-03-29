@@ -10,6 +10,7 @@ import type { OnMount } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { MOCK_SOURCE_LINES } from '../../renderer/mockData'
+import { useGutterDrag } from '../../renderer/hooks/useGutterDrag'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -84,10 +85,12 @@ export default function CodeEditor() {
   const breakpoints       = useDebugStore((s) => s.breakpoints)
   const variables         = useDebugStore((s) => s.variables)
   const executionHistory  = useDebugStore((s) => s.executionHistory)
+  const editorRef              = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
 
   const storeRef = useRef(useDebugStore.getState)
+  const getFile = useCallback(() => storeRef.current().currentFile, [])
+  const { isDragging, onMouseDown } = useGutterDrag(editorRef, getFile)
 
-  const editorRef              = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
   const monacoRef              = useRef<typeof Monaco | null>(null)
   const bpCollectionRef        = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const cursorCollectionRef    = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
@@ -302,13 +305,18 @@ export default function CodeEditor() {
   const sourceContent = sourceLines?.join('\n') ?? MOCK_SOURCE_LINES
 
   return (
-    <MonacoEditor
-      height="100%"
-      language={MONACO_LANG[language] ?? 'cpp'}
-      value={sourceContent}
-      theme="vs-dark"
-      options={EDITOR_OPTIONS}
-      onMount={handleMount}
-    />
+    <div
+      style={{ position: 'relative', height: '100%', cursor: isDragging ? 'ns-resize' : undefined }}
+      onMouseDown={onMouseDown}
+    >
+      <MonacoEditor
+        height="100%"
+        language={MONACO_LANG[language] ?? 'cpp'}
+        value={sourceContent}
+        theme="vs-dark"
+        options={EDITOR_OPTIONS}
+        onMount={handleMount}
+      />
+    </div>
   )
 }

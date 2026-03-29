@@ -12,6 +12,7 @@ import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
 import BreakpointPanel from './BreakpointPanel'
 import WatchPanel from './WatchPanel'
+import CollectionFilter from './CollectionFilter'
 
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
@@ -88,14 +89,16 @@ interface VariableRowProps {
 }
 
 function VariableRow({ variable, depth = 0, isBeginnerMode = false }: Readonly<VariableRowProps>) {
+  const [filteredChildren, setFilteredChildren] = useState<Variable[] | null>(null)
   const [expanded,     setExpanded]     = useState(false)
   const [liveChildren, setLiveChildren] = useState<Variable[] | null>(null)
   const [tooltip,      setTooltip]      = useState('')
   const [tooltipVis,   setTooltipVis]   = useState(false)
   const hoverTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  const rawChildren = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
+  const children = filteredChildren ?? rawChildren
   const hasChildren = variable.variablesReference > 0
-  const children    = liveChildren ?? MOCK_CHILDREN_MAP[variable.variablesReference] ?? []
   const isNull      = variable.value === '0x0000000000000000' || variable.value === 'nullptr' || variable.value === '0x0'
 
   const handleExpand = useCallback(async () => {
@@ -158,6 +161,12 @@ function VariableRow({ variable, depth = 0, isBeginnerMode = false }: Readonly<V
           </div>
         )}
       </div>
+      {expanded && rawChildren.length > 1 && (
+        <CollectionFilter
+          children={rawChildren}
+          onFiltered={(f) => setFilteredChildren(f.length === rawChildren.length ? null : f)}
+        />
+      )}
       {expanded && children.map((child) => (
         <VariableRow key={child.name} variable={child} depth={depth + 1} isBeginnerMode={isBeginnerMode} />
       ))}
@@ -334,11 +343,11 @@ function CallStackPanel() {
           </div>
         ) : (
           frames.map((frame) => (
-            <div
+            <button
               key={frame.id}
               onClick={() => handleFrameClick(frame)}
               className={[
-                'px-3 py-2 cursor-pointer hover:bg-[#2a2d2e] border-b border-[#2d2d2d]',
+                'w-full text-left px-3 py-2 cursor-pointer hover:bg-[#2a2d2e] border-b border-[#2d2d2d]',
                 activeFrame === frame.id ? 'bg-[#094771]' : '',
               ].join(' ')}
             >
@@ -358,7 +367,7 @@ function CallStackPanel() {
                   {frame.variableCount} local {frame.variableCount === 1 ? 'variable' : 'variables'}
                 </div>
               )}
-            </div>
+            </button>
           ))
         )}
       </div>

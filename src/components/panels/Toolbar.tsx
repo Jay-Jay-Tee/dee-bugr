@@ -339,11 +339,10 @@ export default function Toolbar() {
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
       <LanguageSelector />
       <Divider />
-      {isIdle
-        ? <FileInputBar language={language} onLaunch={handleLaunch} />
-        : <ToolbarBtn title="Stop (Shift+F5)" onClick={handleStop} variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
+      {(isRunning || isPaused)
+        ? <ToolbarBtn title="Stop (Shift+F5)" onClick={handleStop} variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
+        : <FileInputBar language={language} onLaunch={handleLaunch} />
       }
-      <Divider />
       <StepControls
         isPaused={isPaused}
         isRunning={isRunning}

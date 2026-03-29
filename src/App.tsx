@@ -6,6 +6,7 @@ import { IPC } from './shared/ipc'
 import type { IPCChannel } from './shared/ipc'
 import Toolbar from './components/panels/Toolbar'
 import MainLayout from './components/panels/MainLayout'
+import SessionErrorBanner from './components/panels/SessionErrorBanner'
 
 function invoke(channel: IPCChannel, args?: unknown) {
   return globalThis.electronAPI?.invoke(channel, args)
@@ -36,6 +37,7 @@ export default function App() {
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1e1e1e]">
+      <SessionErrorBanner />
       <Toolbar />
       <MainLayout />
     </div>
