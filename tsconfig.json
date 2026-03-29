@@ -2,36 +2,36 @@
   "compilerOptions": {
     "target": "ES2020",
     "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
-
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "moduleResolution": "bundler",
-
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-
     "jsx": "react-jsx",
-
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
-
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"]
+      "@shared/*": [
+        "src/shared/*"
+      ]
     }
   },
-
   "include": [
-    "src/renderer",
-    "src/shared",
-    "src/renderer/global.d.ts"
-, "src/components/panels/VariableHistoryPanel", "src/components/panels/ObjectGraphPanel"  ],
-
+    "src",
+    "electron"
+  ],
   "references": [
-    { "path": "./tsconfig.node.json" }
+    {
+      "path": "./tsconfig.node.json"
+    }
   ]
 }

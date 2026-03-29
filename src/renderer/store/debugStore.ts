@@ -23,7 +23,7 @@ interface DebugStore extends DebugState {
 }
 
 function invoke(channel: IPCChannel, args?: unknown): Promise<unknown> {
-  return globalThis.electronAPI.invoke(channel, args)
+  return globalThis.electronAPI?.invoke(channel, args) ?? Promise.resolve(undefined)
 }
 
 export const useDebugStore = create<DebugStore>((set, get) => ({

@@ -10,6 +10,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
+import { useWatchExpressions } from '../../hooks/useWatchExpressions'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
@@ -37,7 +38,7 @@ function resultColor(result: string): string {
 interface WatchRowProps {
   expr:   string
   result: string
-  onRemove: (expr: string) => void
+  onRemove: () => void
 }
 
 function WatchRow({ expr, result, onRemove }: Readonly<WatchRowProps>) {
@@ -48,7 +49,7 @@ function WatchRow({ expr, result, onRemove }: Readonly<WatchRowProps>) {
         {result}
       </span>
       <button
-        onClick={() => onRemove(expr)}
+        onClick={onRemove}
         title="Remove watch"
         className="text-[#555] hover:text-[#f48771] opacity-0 group-hover:opacity-100 transition-opacity shrink-0 ml-1"
       >
@@ -97,22 +98,19 @@ function AddWatchInput({ onAdd }: Readonly<AddWatchInputProps>) {
 // ── Watch panel ───────────────────────────────────────────────────────────────
 
 export default function WatchPanel() {
-  const status          = useDebugStore((s) => s.status)
-  const expressions     = useDebugStore((s) => s.watchExpressions)
-  const watchValues     = useDebugStore((s) => s.watchValues)
-  const addWatch        = useDebugStore((s) => s.addWatch)
-  const removeWatch     = useDebugStore((s) => s.removeWatch)
+const status = useDebugStore((s) => s.status)
+  const { entries, addExpression, removeExpression } = useWatchExpressions()
 
   // Placeholder result when we can't evaluate
   const placeholderResult = status === 'paused' ? '…' : '<not paused>'
 
   const handleAdd = useCallback((expr: string) => {
-    addWatch(expr)
-  }, [addWatch])
+    addExpression(expr)
+  }, [addExpression])
 
   const handleRemove = useCallback((expr: string) => {
-    removeWatch(expr)
-  }, [removeWatch])
+    removeExpression(expr)
+  }, [removeExpression])
 
   return (
     <div className="flex flex-col h-full">
@@ -124,17 +122,17 @@ export default function WatchPanel() {
 
       {/* Rows */}
       <div className="flex-1 overflow-y-auto">
-        {expressions.length === 0 ? (
+        {entries.length === 0 ? (
           <div className="p-3 text-xs text-[#555]">
             No watch expressions. Add one below.
           </div>
         ) : (
-          expressions.map((expr: string) => (
+          entries.map((entry) => (
             <WatchRow
-              key={expr}
-              expr={expr}
-              result={watchValues[expr] ?? placeholderResult}
-              onRemove={handleRemove}
+              key={entry.id}
+              expr={entry.expression}
+              result={entry.result !== '—' ? entry.result : placeholderResult}
+              onRemove={() => removeExpression(entry.id)}
             />
           ))
         )}

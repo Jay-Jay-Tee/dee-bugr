@@ -1,6 +1,6 @@
 // src/components/panels/Toolbar.tsx
 
-import { useCallback, useState } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
@@ -197,7 +197,7 @@ function AIButtons({ isPaused, sourceLines, language }: { isPaused: boolean; sou
   const [narrative, setNarrative] = useState('')
 
   const handleExplain = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('lucid:ai-explain'))
+    globalThis.dispatchEvent(new CustomEvent('lucid:ai-explain'))
   }, [])
 
   const handleFix = useCallback(() => {
@@ -230,7 +230,7 @@ function AIButtons({ isPaused, sourceLines, language }: { isPaused: boolean; sou
       <ToolbarBtn title="Explain Bug (AI)" onClick={handleExplain} disabled={!isPaused} variant="accent">
         <span>⚡ Explain</span>
       </ToolbarBtn>
-      <ToolbarBtn title="Suggest Fix (AI)" onClick={handleFix} disabled={!isPaused} variant="success">
+      <ToolbarBtn title="Suggest Fix (AI)" onClick={handleFix} disabled={!isPaused} variant="accent">
         <span>🔧 Fix</span>
       </ToolbarBtn>
       <ToolbarBtn title="AI: Suggest breakpoints for this file" onClick={handleSuggestBPs} variant="accent">
@@ -308,6 +308,7 @@ export default function Toolbar() {
   const isRunning = status === 'running' || status === 'launching'
   const isPaused  = status === 'paused'
   const isIdle    = status === 'idle' || status === 'terminated'
+  // unused for now, but could be useful for conditionally showing/hiding certain buttons or inputs
 
   const handleLaunch   = useCallback((target: string) => { invoke(IPC.LAUNCH, { language, target }) }, [language])
   const handleStop     = useCallback(() => invoke(IPC.TERMINATE), [])
@@ -319,12 +320,6 @@ export default function Toolbar() {
 
   // Run-to-cursor: uses the Monaco editor's current cursor position
   // The cursor line is tracked via a custom event from CodeEditor
-  const [editorCursorLine, setEditorCursorLine] = useState(0)
-  useEffect(() => {
-    const h = (e: Event) => setEditorCursorLine((e as CustomEvent<number>).detail)
-    window.addEventListener('lucid:cursor-line', h)
-    return () => window.removeEventListener('lucid:cursor-line', h)
-  }, [])
 
   const handleRunToCursor = useCallback(() => {
     if (!currentFile || !currentLine) return
@@ -344,7 +339,10 @@ export default function Toolbar() {
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0">
       <LanguageSelector />
       <Divider />
-      <LaunchStopBtn isActive={isRunning || isPaused} onLaunch={handleLaunch} onStop={handleStop} />
+      {isIdle
+        ? <FileInputBar language={language} onLaunch={handleLaunch} />
+        : <ToolbarBtn title="Stop (Shift+F5)" onClick={handleStop} variant="danger"><StopIcon /><span>Stop</span></ToolbarBtn>
+      }
       <Divider />
       <StepControls
         isPaused={isPaused}

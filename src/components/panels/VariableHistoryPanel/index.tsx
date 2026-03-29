@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useDebugStore } from '../../../renderer/store/debugStore'
 import type { HistoryEntry } from '../../../shared/types'
 import VariableSelector from './VariableSelector'
@@ -45,9 +45,9 @@ export default function VariableHistoryPanel() {
   }, [executionHistory, selected])
 
   // Keep selected in sync if variables list changes (e.g. on new debug session)
-  useState(() => {
+  useEffect(() => {
     if (!selected && variables.length > 0) setSelected(variables[0])
-  })
+  }, [variables, selected])
 
   if (executionHistory.length === 0) {
     return (
