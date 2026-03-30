@@ -144,3 +144,45 @@ button:focus-visible {
   from { transform: rotate(0deg); }
   to   { transform: rotate(360deg); }
 }
+
+/* ── CodeEditor: anomaly gutter glyphs ───────────────────────────────────── */
+/* Error anomalies — red stop-sign style */
+.lucid-anomaly-glyph-error::before {
+  content: '⛔';
+  font-size: 11px;
+  display: block;
+  line-height: 20px;
+  margin-left: 1px;
+}
+
+/* Warning anomalies — amber warning triangle */
+.lucid-anomaly-glyph-warn::before {
+  content: '⚠';
+  font-size: 11px;
+  display: block;
+  line-height: 20px;
+  margin-left: 1px;
+  color: #ffcc00;
+}
+
+/* Whole-line tints */
+.lucid-anomaly-line-error {
+  background: rgba(244, 135, 113, 0.08) !important;
+  border-left: 2px solid #f48771 !important;
+}
+
+.lucid-anomaly-line-warn {
+  background: rgba(255, 204, 0, 0.06) !important;
+  border-left: 2px solid #ffcc00 !important;
+}
+
+/* ── CodeEditor: return value inline overlay ─────────────────────────────── */
+/* Rendered after the call-site line when lastReturnValue is set */
+.lucid-return-val-overlay {
+  color: #4ec9b0;
+  font-style: italic;
+  font-size: 12px;
+  opacity: 0.9;
+  pointer-events: none;
+  white-space: pre;
+}

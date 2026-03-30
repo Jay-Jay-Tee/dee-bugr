@@ -3,9 +3,9 @@
 
 import { useEffect, useRef, useState, useMemo } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
-import type { HistoryEntry } from '../../shared/types'
-import DebugCinema from './DebugCinema'
-import MemoryAddressInput from './MemoryAddressInput'
+import DebugCinema from './subpanels/DebugCinema'
+import MemoryAddressInput from './subpanels/MemoryAddressInput'
+import VariableHistoryPanel from './subpanels/VariableHistoryPanel/index'
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -109,88 +109,6 @@ function ConsoleTab() {
   )
 }
 
-// ── History timeline tab ──────────────────────────────────────────────────────
-// Simple chart: plots selected variable value over execution steps.
-// Pure CSS — no Chart.js dependency needed for this basic version.
-
-function HistoryTab() {
-  const history = useDebugStore((s) => s.executionHistory)
-  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
-  const [selectedVar, setSelectedVar] = useState<string>('')
-
-  // Collect all variable names seen across history
-  const varNames = useMemo(() => {
-    const names = new Set<string>()
-    for (const entry of history) {
-      Object.keys(entry.variables).forEach(n => names.add(n))
-    }
-    return [...names].sort()
-  }, [history])
-
-  // Auto-select first var
-  useEffect(() => {
-    if (!selectedVar && varNames.length > 0) setSelectedVar(varNames[0])
-  }, [varNames, selectedVar])
-
-  // Data points for selected variable
-  const points = useMemo(() => {
-    return history.map(entry => ({
-      step: entry.step,
-      file: entry.file,
-      line: entry.line,
-      value: entry.variables[selectedVar]?.value ?? '—',
-      changed: entry.variables[selectedVar]?.changed ?? false,
-    }))
-  }, [history, selectedVar])
-
-  if (history.length === 0) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-[#555] text-xs">
-        {isBeginnerMode
-          ? 'Run your program and step through it — variable history will appear here.'
-          : 'No execution history yet. Launch a debug session and step.'}
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex-1 flex flex-col overflow-hidden p-2 gap-2">
-      {/* Variable selector */}
-      <div className="flex items-center gap-2 shrink-0">
-        <span className="text-[10px] text-[#969696] uppercase tracking-wide">Variable:</span>
-        <select
-          value={selectedVar}
-          onChange={e => setSelectedVar(e.target.value)}
-          className="bg-[#3c3c3c] text-xs text-[#cccccc] px-2 py-0.5 rounded outline-none"
-        >
-          {varNames.map(n => <option key={n} value={n}>{n}</option>)}
-        </select>
-        <span className="text-[10px] text-[#555]">{points.length} steps recorded</span>
-      </div>
-
-      {/* Timeline rows */}
-      <div className="flex-1 overflow-y-auto space-y-0.5">
-        {points.map((p) => (
-          <div
-            key={p.step}
-            className={[
-              'flex items-center gap-3 px-2 py-0.5 rounded text-xs font-mono',
-              p.changed ? 'bg-amber-900/30 text-amber-300' : 'text-[#969696]',
-            ].join(' ')}
-          >
-            <span className="w-12 shrink-0 text-[#555]">step {p.step}</span>
-            <span className="w-6 shrink-0 text-center">{p.changed ? '↑' : ' '}</span>
-            <span className="flex-1 truncate">{p.value}</span>
-            <span className="text-[10px] text-[#444] truncate">
-              {p.file.split('/').pop()}:{p.line}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 // ── Memory view tab ───────────────────────────────────────────────────────────
 // Renders the raw memory bytes from Zustand as a hex grid.
 
@@ -270,7 +188,7 @@ export default function BottomPanel() {
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-t border-[#3c3c3c]">
       <TabBar active={tab} onChange={setTab} />
       {tab === 'console' && <ConsoleTab />}
-      {tab === 'history' && <HistoryTab />}
+      {tab === 'history' && <VariableHistoryPanel />}
       {tab === 'memory' && <MemoryTab />}
       {tab === 'cinema' && <DebugCinema />}
     </div>

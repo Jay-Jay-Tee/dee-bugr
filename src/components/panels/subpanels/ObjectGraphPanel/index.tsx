@@ -1,8 +1,8 @@
 import { useEffect, useRef, useMemo, useState, useCallback } from 'react'
 import { Network, DataSet, type Options } from 'vis-network/standalone'
-import { useDebugStore } from '../../../renderer/store/debugStore'
+import { useDebugStore } from '../../../../renderer/store/debugStore'
 import { parseVariableToGraph } from './parseVariableToGraph'
-import type { Variable } from '../../../shared/types'
+import type { Variable } from '../../../../shared/types'
 
 // ── vis-network options ───────────────────────────────────────────────────────
 // Physics (forceAtlas2Based) is used instead of hierarchical layout so nodes
@@ -31,29 +31,29 @@ const VIS_OPTIONS: Options = {
     selectionWidth: 2,
   },
   groups: {
-    object:  {
+    object: {
       color: { background: '#1e1c3a', border: '#534AB7', highlight: { background: '#2d2b4e', border: '#7c6af7' } },
-      font:  { color: '#b0adf5' },
+      font: { color: '#b0adf5' },
     },
-    array:   {
+    array: {
       color: { background: '#0f2720', border: '#0F6E56', highlight: { background: '#1e3530', border: '#1aaf87' } },
-      font:  { color: '#6fcfb2' },
+      font: { color: '#6fcfb2' },
     },
-    number:  {
+    number: {
       color: { background: '#281e0e', border: '#854F0B', highlight: { background: '#3a2f1a', border: '#c47a1a' } },
-      font:  { color: '#d4a96a' },
+      font: { color: '#d4a96a' },
     },
-    string:  {
+    string: {
       color: { background: '#0e1d2e', border: '#185FA5', highlight: { background: '#1a2b3a', border: '#3a8fd1' } },
-      font:  { color: '#6ab0e0' },
+      font: { color: '#6ab0e0' },
     },
     boolean: {
       color: { background: '#27101e', border: '#993556', highlight: { background: '#3a1e2f', border: '#c45077' } },
-      font:  { color: '#d47aab' },
+      font: { color: '#d47aab' },
     },
-    null:    {
+    null: {
       color: { background: '#1e1e1e', border: '#5F5E5A', highlight: { background: '#2a2a2a', border: '#888780' } },
-      font:  { color: '#888780' },
+      font: { color: '#888780' },
     },
   },
   physics: {
@@ -97,38 +97,38 @@ const VIS_OPTIONS: Options = {
 /** Bridge from the flat store Variable to the DAPVariable shape parseVariableToGraph expects. */
 function variableToDAPInput(v: Variable) {
   return {
-    name:               v.name,
-    value:              v.value,
-    type:               v.type  ?? 'unknown',
+    name: v.name,
+    value: v.value,
+    type: v.type ?? 'unknown',
     variablesReference: v.variablesReference,
-    children:           [],     // DAP children aren't pre-fetched here; flat render only
+    children: [],     // DAP children aren't pre-fetched here; flat render only
   }
 }
 
 const LEGEND: { color: string; label: string }[] = [
-  { color: '#534AB7', label: 'object'  },
-  { color: '#0F6E56', label: 'array'   },
-  { color: '#854F0B', label: 'number'  },
-  { color: '#185FA5', label: 'string'  },
+  { color: '#534AB7', label: 'object' },
+  { color: '#0F6E56', label: 'array' },
+  { color: '#854F0B', label: 'number' },
+  { color: '#185FA5', label: 'string' },
   { color: '#993556', label: 'boolean' },
-  { color: '#5F5E5A', label: 'null'    },
+  { color: '#5F5E5A', label: 'null' },
 ]
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function ObjectGraphPanel() {
   const variables = useDebugStore((s) => s.variables)
-  const status    = useDebugStore((s) => s.status)
+  const status = useDebugStore((s) => s.status)
 
   // The variable whose sub-graph is being visualised. Defaults to the first
   // complex variable (variablesReference > 0), or first variable if none.
   const [selectedName, setSelectedName] = useState<string | null>(null)
 
-  const containerRef    = useRef<HTMLDivElement>(null)
-  const networkRef      = useRef<Network | null>(null)
-  const [stabilized,    setStabilized]    = useState(false)
-  const [nodeCount,     setNodeCount]     = useState(0)
-  const [edgeCount,     setEdgeCount]     = useState(0)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const networkRef = useRef<Network | null>(null)
+  const [stabilized, setStabilized] = useState(false)
+  const [nodeCount, setNodeCount] = useState(0)
+  const [edgeCount, setEdgeCount] = useState(0)
   const [selectedLabel, setSelectedLabel] = useState<string | null>(null)
 
   // ── Auto-select a sensible default when variables change ──────────────────
@@ -195,7 +195,7 @@ export default function ObjectGraphPanel() {
     net.on('click', (params) => {
       if (params.nodes.length > 0) {
         const nodeId = params.nodes[0] as string
-        const node   = graph.nodes.find((n) => n.id === nodeId)
+        const node = graph.nodes.find((n) => n.id === nodeId)
         setSelectedLabel(node ? `${node.id}  ·  ${node.title ?? node.label}` : null)
       } else {
         setSelectedLabel(null)
@@ -333,7 +333,7 @@ export default function ObjectGraphPanel() {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-function EmptyState({ message }: { message: React.ReactNode }) {
+function EmptyState({ message }: {readonly message: React.ReactNode }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2.5 text-[#444462] text-xs px-6 text-center">
       <GraphIcon />
@@ -347,16 +347,16 @@ function EmptyState({ message }: { message: React.ReactNode }) {
 function GraphIcon() {
   return (
     <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="4"  r="2" />
-      <circle cx="4"  cy="20" r="2" />
+      stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="4" r="2" />
+      <circle cx="4" cy="20" r="2" />
       <circle cx="20" cy="20" r="2" />
       <circle cx="12" cy="14" r="2" />
-      <line x1="12" y1="6"  x2="12" y2="12" />
-      <line x1="12" y1="16" x2="5"  y2="19" />
+      <line x1="12" y1="6" x2="12" y2="12" />
+      <line x1="12" y1="16" x2="5" y2="19" />
       <line x1="12" y1="16" x2="19" y2="19" />
-      <line x1="12" y1="6"  x2="5"  y2="18" />
-      <line x1="12" y1="6"  x2="19" y2="18" />
+      <line x1="12" y1="6" x2="5" y2="18" />
+      <line x1="12" y1="6" x2="19" y2="18" />
     </svg>
   )
 }
@@ -364,11 +364,11 @@ function GraphIcon() {
 function FitIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <polyline points="15 3 21 3 21 9" />
       <polyline points="9 21 3 21 3 15" />
-      <line x1="21" y1="3"  x2="14" y2="10" />
-      <line x1="3"  y1="21" x2="10" y2="14" />
+      <line x1="21" y1="3" x2="14" y2="10" />
+      <line x1="3" y1="21" x2="10" y2="14" />
     </svg>
   )
 }
@@ -376,7 +376,7 @@ function FitIcon() {
 function RelayoutIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round">
       <polyline points="23 4 23 10 17 10" />
       <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
     </svg>

@@ -1,10 +1,10 @@
 import type { FlatEntry } from './index'
 
 interface HistoryTableProps {
-  entries: FlatEntry[]
+  readonly entries: FlatEntry[]
 }
 
-export default function HistoryTable({ entries }: HistoryTableProps) {
+export default function HistoryTable( { entries }: HistoryTableProps) {
   if (entries.length === 0) {
     return (
       <div className="vhp-empty">No history for this variable yet.</div>

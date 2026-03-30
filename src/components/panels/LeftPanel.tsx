@@ -10,9 +10,9 @@ import { useDebugStore } from '../../renderer/store/debugStore'
 import { MOCK_CHILDREN_MAP } from '../../renderer/mockData'
 import { IPC } from '../../shared/ipc'
 import type { Variable, StackFrame } from '../../shared/types'
-import BreakpointPanel from './BreakpointPanel'
-import WatchPanel from './WatchPanel'
-import CollectionFilter from './CollectionFilter'
+import BreakpointPanel from './subpanels/BreakpointPanel'
+import WatchPanel from './subpanels/WatchPanel'
+import CollectionFilter from './subpanels/CollectionFilter'
 
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
@@ -154,9 +154,15 @@ function VariableRow({ variable, depth = 0, isBeginnerMode = false }: Readonly<V
     if (!isBeginnerMode) return
     hoverTimer.current = setTimeout(async () => {
       try {
-        const result = await invoke(IPC.AI_EXPLAIN_VAR, { varName: variable.name }) as any
-        if (result?.success && result.explanation) {
-          setTooltip(result.explanation)
+        const result = await invoke(IPC.AI_EXPLAIN_VAR, { varName: variable.name })
+        // Type guard: AI_EXPLAIN_VAR returns { success: boolean; explanation?: string }
+        if (
+          typeof result === 'object' &&
+          result !== null &&
+          (result as Record<string, unknown>)['success'] === true &&
+          typeof (result as Record<string, unknown>)['explanation'] === 'string'
+        ) {
+          setTooltip((result as Record<string, unknown>)['explanation'] as string)
           setTooltipVis(true)
         }
       } catch { /* ignore */ }

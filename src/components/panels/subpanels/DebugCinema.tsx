@@ -9,9 +9,9 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import { IPC } from '../../shared/ipc'
-import type { HistoryEntry } from '../../shared/types'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import { IPC } from '../../../shared/ipc'
+import type { HistoryEntry } from '../../../shared/types'
 
 const SPEEDS = [0.5, 1, 2, 4] // seconds per step
 
@@ -63,7 +63,7 @@ export default function DebugCinema() {
       // Inform main process — editor cursor will jump there
       await invoke(IPC.JUMP_TO_STEP, { step: step.step })
       // Also dispatch event for CodeEditor to highlight the line
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent('lucid:cinema-step', {
           detail: { file: step.file, line: step.line },
         })
@@ -88,7 +88,7 @@ export default function DebugCinema() {
         const step = steps[next]
         // fire-and-forget jump
         invoke(IPC.JUMP_TO_STEP, { step: step.step })
-        window.dispatchEvent(
+        globalThis.dispatchEvent(
           new CustomEvent('lucid:cinema-step', {
             detail: { file: step.file, line: step.line },
           })

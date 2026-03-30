@@ -9,7 +9,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { Anomaly, Variable } from '../../shared/types'
-import ObjectGraphPanel from './ObjectGraphPanel/index'
+import ObjectGraphPanel from './subpanels/ObjectGraphPanel/index'
 
 type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'narrative'
 

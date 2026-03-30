@@ -14,8 +14,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useId } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import type { Breakpoint } from '../../shared/types'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import type { Breakpoint } from '../../../shared/types'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

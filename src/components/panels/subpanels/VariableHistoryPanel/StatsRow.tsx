@@ -5,11 +5,11 @@ interface StatsRowProps {
 }
 
 export default function StatsRow({ entries }: StatsRowProps) {
-  const nums    = entries.map((e) => parseFloat(e.value)).filter((n) => !isNaN(n))
+  const nums    = entries.map((e) => Number.parseFloat(e.value)).filter((n) => !Number.isNaN(n))
   const latest = entries[entries.length - 1]
   const min     = nums.length ? Math.min(...nums) : null
   const max     = nums.length ? Math.max(...nums) : null
-  const delta   = nums.length >= 2 ? (nums[nums.length-1]! - nums[0]).toFixed(3) : '—'
+  const delta   = nums.length >= 2 ? (nums[nums.length - 1] - nums[0]).toFixed(3) : '—'
   const changes = entries.filter((e) => e.changed).length
 
   return (
@@ -28,9 +28,9 @@ function Stat({
   value,
   sub,
 }: {
-  label: string
-  value: string
-  sub?: string
+  readonly label: string
+  readonly value: string
+  readonly sub?: string
 }) {
   return (
     <div className="vhp-stat">

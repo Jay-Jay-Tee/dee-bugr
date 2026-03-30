@@ -6,8 +6,8 @@
 // the address being pre-filled from the store's currentLine context).
 
 import { useState, useCallback, useEffect } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import { IPC } from '../../shared/ipc'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import { IPC } from '../../../shared/ipc'
 
 type AnyIPC = typeof IPC[keyof typeof IPC]
 

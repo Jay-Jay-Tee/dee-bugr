@@ -1,7 +1,7 @@
 interface VariableSelectorProps {
-  variables: string[]
-  selected: string
-  onChange: (variable: string) => void
+  readonly variables: string[]
+  readonly selected: string
+  readonly onChange: (variable: string) => void
 }
 
 export default function VariableSelector({

@@ -9,8 +9,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, useRef } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import { useWatchExpressions } from '../../hooks/useWatchExpressions'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import { useWatchExpressions } from '../../../hooks/useWatchExpressions'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
 

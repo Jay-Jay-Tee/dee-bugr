@@ -6,7 +6,7 @@
 // Only matching children are shown.
 
 import { useState, useCallback, useMemo } from 'react'
-import type { Variable } from '../../shared/types'
+import type { Variable } from '../../../shared/types'
 
 interface Props {
   children: Variable[]
