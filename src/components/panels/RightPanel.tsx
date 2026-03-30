@@ -14,27 +14,71 @@ import ObjectGraphPanel from './ObjectGraphPanel/index'
 type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'narrative'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'ai',        label: 'AI'        },
-  { id: 'fix',       label: 'Fix'       },
-  { id: 'asm',       label: 'Assembly'  },
-  { id: 'graph',     label: 'Graph'     },
+  { id: 'ai', label: 'AI' },
+  { id: 'fix', label: 'Fix' },
+  { id: 'asm', label: 'Assembly' },
+  { id: 'graph', label: 'Graph' },
   { id: 'narrative', label: 'Narrative' },
 ]
 
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({ active, onChange }: { readonly active: Tab; readonly onChange: (t: Tab) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  // Responsive Check: If tabs get too squished, we could trigger a menu style
+  // For now, we'll ensure they grow evenly and handle min-widths gracefully
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        // If the panel is narrower than 200px (adjust based on your tab count), 
+        // you might want to toggle a "Menu" mode.
+        setIsCollapsed(entry.contentRect.width < 250)
+      }
+    })
+
+    if (containerRef.current) observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <div className="flex border-b border-[#3c3c3c] shrink-0 overflow-x-auto">
-      {TABS.map((t) => (
-        <button key={t.id} onClick={() => onChange(t.id)}
-          className={['px-2.5 py-1.5 text-[10px] uppercase tracking-wide transition-colors whitespace-nowrap',
-            active === t.id ? 'text-white border-b-2 border-blue-500 -mb-px' : 'text-[#969696] hover:text-white'].join(' ')}>
-          {t.label}
-        </button>
-      ))}
+    <div
+      ref={containerRef}
+      className="flex w-full border-b border-[#3c3c3c] shrink-0 bg-[#1e1e1e] overflow-hidden"
+    >
+      {TABS.map((t, i) => {
+        const isActive = active === t.id
+
+        return (
+          <div key={t.id} className="flex flex-1 items-center min-w-0">
+            {/* Centered Pipe Divider - Hidden for the first element */}
+            {i > 0 && <div className="w-px h-3 bg-[#3c3c3c] shrink-0" />}
+
+            <button
+              onClick={() => onChange(t.id)}
+              title={isCollapsed ? t.label : ''} // Tooltip when text is cut off
+              className={[
+                // flex-1 here ensures the button grows to fill all available space evenly
+                'flex-1 flex items-center justify-center py-2 px-1 transition-all duration-200 min-w-0 relative',
+                isActive
+                  ? 'text-white bg-[#2d2d2d]/40 hover:bg-[#2d2d2d]/70'
+                  : 'text-[#969696] hover:text-white hover:bg-[#2a2d2e]/50',
+              ].join(' ')}
+            >
+              <span className="text-[10px] uppercase tracking-wider truncate px-1">
+                {isCollapsed ? t.label.charAt(0) : t.label}
+              </span>
+
+              {/* Blue indicator line */}
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#00ffff] z-0" />
+              )}
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }
-
 function AnomalyBanner() {
   const anomalies = useDebugStore((s) => s.anomalies)
   if (!anomalies || anomalies.length === 0) return null
@@ -61,10 +105,10 @@ function highlightAsm(instruction: string): React.ReactNode {
   const mnemonic = parts[0]
   const rest = parts.slice(1).join(' ')
   const color =
-    /^j/i.test(mnemonic)    ? 'text-[#c586c0]' :
-    /^call/i.test(mnemonic) ? 'text-[#dcdcaa]' :
-    /^ret/i.test(mnemonic)  ? 'text-[#f48771]' :
-    /^mov/i.test(mnemonic)  ? 'text-[#9cdcfe]' : 'text-[#569cd6]'
+    /^j/i.test(mnemonic) ? 'text-[#c586c0]' :
+      /^call/i.test(mnemonic) ? 'text-[#dcdcaa]' :
+        /^ret/i.test(mnemonic) ? 'text-[#f48771]' :
+          /^mov/i.test(mnemonic) ? 'text-[#9cdcfe]' : 'text-[#569cd6]'
   return (
     <>
       <span className={color + ' font-medium'}>{mnemonic}</span>
@@ -74,10 +118,10 @@ function highlightAsm(instruction: string): React.ReactNode {
 }
 
 function AssemblyPanel() {
-  const assemblyLines  = useDebugStore((s) => s.assemblyLines)
-  const currentLine    = useDebugStore((s) => s.currentLine)
-  const language       = useDebugStore((s) => s.language)
-  const status         = useDebugStore((s) => s.status)
+  const assemblyLines = useDebugStore((s) => s.assemblyLines)
+  const currentLine = useDebugStore((s) => s.currentLine)
+  const language = useDebugStore((s) => s.language)
+  const status = useDebugStore((s) => s.status)
   const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
   const currentLineRef = useRef<HTMLDivElement>(null)
 
@@ -125,9 +169,9 @@ function AssemblyPanel() {
 
 function AIExplanationPanel() {
   const [explanation, setExplanation] = useState('')
-  const [loading, setLoading]         = useState(false)
-  const [error, setError]             = useState('')
-  const status         = useDebugStore((s) => s.status)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const status = useDebugStore((s) => s.status)
   const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
 
   const fetchExplanation = async () => {
@@ -164,7 +208,7 @@ function AIExplanationPanel() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="text-[#888] text-xs animate-pulse">Analyzing with Groq AI...</div>}
-        {error    && <div className="text-red-400 text-xs p-2 bg-red-900/20 rounded">⚠️ {error}</div>}
+        {error && <div className="text-red-400 text-xs p-2 bg-red-900/20 rounded">⚠️ {error}</div>}
         {explanation && !loading && (
           <>
             {isBeginnerMode && <div className="text-[10px] text-[#569cd6] mb-2 uppercase tracking-wide">Beginner explanation</div>}
@@ -193,16 +237,16 @@ function diffLines(original: string, fixed: string) {
     if (o === f) { if (o !== undefined) result.push({ type: 'same', text: o }) }
     else {
       if (o !== undefined) result.push({ type: 'remove', text: o })
-      if (f !== undefined) result.push({ type: 'add',    text: f })
+      if (f !== undefined) result.push({ type: 'add', text: f })
     }
   }
   return result
 }
 
 function AIFixPanel() {
-  const [fix, setFix]           = useState<FixResult | null>(null)
-  const [loading, setLoading]   = useState(false)
-  const [error, setError]       = useState('')
+  const [fix, setFix] = useState<FixResult | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [accepted, setAccepted] = useState(false)
   const status = useDebugStore((s) => s.status)
 
@@ -244,7 +288,7 @@ function AIFixPanel() {
       </div>
       <div className="flex-1 overflow-y-auto">
         {loading && <div className="text-[#888] text-xs animate-pulse">Generating fix...</div>}
-        {error    && <div className="text-red-400 text-xs p-2 bg-red-900/20 rounded">⚠️ {error}</div>}
+        {error && <div className="text-red-400 text-xs p-2 bg-red-900/20 rounded">⚠️ {error}</div>}
         {fix && !loading && (
           <>
             {fix.explanation && <div className="text-xs text-[#4ec9b0] mb-3 p-2 bg-[#2a2a2a] rounded">💡 {fix.explanation}</div>}
@@ -258,7 +302,7 @@ function AIFixPanel() {
                 {dr.map((line, i) => (
                   <div key={i} className={['px-3 py-0.5 whitespace-pre-wrap break-all',
                     line.type === 'remove' ? 'bg-red-950/50 text-red-300' :
-                    line.type === 'add'    ? 'bg-green-950/50 text-green-300' : 'text-[#888]'].join(' ')}>
+                      line.type === 'add' ? 'bg-green-950/50 text-green-300' : 'text-[#888]'].join(' ')}>
                     <span className="mr-2 select-none">{line.type === 'remove' ? '−' : line.type === 'add' ? '+' : ' '}</span>
                     {line.text}
                   </div>
@@ -358,10 +402,10 @@ export default function RightPanel() {
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-l border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <AnomalyBanner />
-      {activeTab === 'ai'        && <AIExplanationPanel />}
-      {activeTab === 'fix'       && <AIFixPanel />}
-      {activeTab === 'asm'       && <AssemblyPanel />}
-      {activeTab === 'graph'     && <ObjectGraphPanel />}
+      {activeTab === 'ai' && <AIExplanationPanel />}
+      {activeTab === 'fix' && <AIFixPanel />}
+      {activeTab === 'asm' && <AssemblyPanel />}
+      {activeTab === 'graph' && <ObjectGraphPanel />}
       {activeTab === 'narrative' && <NarrativePanel />}
     </div>
   )

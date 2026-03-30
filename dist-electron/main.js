@@ -2,7 +2,7 @@ import require$$0__default from "fs";
 import require$$1 from "path";
 import require$$2 from "os";
 import require$$3 from "crypto";
-import { app, BrowserWindow } from "electron";
+import { app, BrowserWindow, Menu, ipcMain, dialog } from "electron";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path__default from "node:path";
@@ -383,8 +383,8 @@ const MAIN_DIST = path__default.join(process.env.APP_ROOT, "dist-electron");
 const RENDERER_DIST = path__default.join(process.env.APP_ROOT, "dist");
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL ? path__default.join(process.env.APP_ROOT, "public") : RENDERER_DIST;
 let win;
-function createWindow() {
-  win = new BrowserWindow({
+function createWindow(filePath) {
+  const w = new BrowserWindow({
     icon: path__default.join(process.env.VITE_PUBLIC, "electron-vite.svg"),
     title: "Lucid — The Debugger That Explains Itself",
     width: 1440,
@@ -394,14 +394,138 @@ function createWindow() {
     webPreferences: {
       preload: path__default.join(__dirname$1, "preload.mjs"),
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      additionalArguments: filePath ? [`--initial-file=${filePath}`] : []
     }
   });
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL);
+    w.loadURL(VITE_DEV_SERVER_URL);
   } else {
-    win.loadFile(path__default.join(RENDERER_DIST, "index.html"));
+    w.loadFile(path__default.join(RENDERER_DIST, "index.html"));
   }
+  return w;
+}
+function buildMenu() {
+  const isMac = process.platform === "darwin";
+  async function pickFile(targetWin) {
+    const { canceled, filePaths } = await dialog.showOpenDialog(targetWin, {
+      title: "Open file to debug",
+      properties: ["openFile"],
+      filters: [
+        { name: "Debuggable files", extensions: ["py", "js", "ts", "java", "c", "cpp", "out", "exe", ""] },
+        { name: "All files", extensions: ["*"] }
+      ]
+    });
+    return canceled || filePaths.length === 0 ? null : filePaths[0];
+  }
+  const template = [
+    // ── File ──────────────────────────────────────────────────────────────────
+    {
+      label: "File",
+      submenu: [
+        {
+          label: "Open File…",
+          accelerator: isMac ? "Cmd+O" : "Ctrl+O",
+          click: async (_item, focusedWindow) => {
+            const target = focusedWindow ?? win;
+            if (!target) return;
+            const filePath = await pickFile(target);
+            if (filePath) {
+              target.webContents.send("app:fileSelected", filePath);
+            }
+          }
+        },
+        {
+          label: "Open File in New Window…",
+          accelerator: isMac ? "Cmd+Shift+O" : "Ctrl+Shift+O",
+          click: async (_item, focusedWindow) => {
+            const source = focusedWindow ?? win;
+            if (!source) return;
+            const filePath = await pickFile(source);
+            if (filePath) {
+              createWindow(filePath);
+            }
+          }
+        },
+        { type: "separator" },
+        isMac ? { role: "close" } : { label: "Exit", role: "quit" }
+      ]
+    },
+    // ── Edit ──────────────────────────────────────────────────────────────────
+    {
+      label: "Edit",
+      submenu: [
+        { role: "undo" },
+        { role: "redo" },
+        { type: "separator" },
+        { role: "cut" },
+        { role: "copy" },
+        { role: "paste" },
+        { role: "selectAll" }
+      ]
+    },
+    // ── View ──────────────────────────────────────────────────────────────────
+    {
+      label: "View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "togglefullscreen" }
+      ]
+    },
+    // ── Window ────────────────────────────────────────────────────────────────
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        ...isMac ? [
+          { type: "separator" },
+          { role: "front" }
+        ] : []
+      ]
+    }
+  ];
+  if (isMac) {
+    template.unshift({
+      label: app.name,
+      submenu: [
+        { role: "about" },
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" }
+      ]
+    });
+  }
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+function registerFileDialogHandler() {
+  ipcMain.handle("app:openFileDialog", async (event, args) => {
+    const senderWin = BrowserWindow.fromWebContents(event.sender);
+    if (!senderWin) return { canceled: true, filePath: null };
+    const { canceled, filePaths } = await dialog.showOpenDialog(senderWin, {
+      title: "Open file to debug",
+      properties: ["openFile"],
+      filters: [
+        { name: "Debuggable files", extensions: ["py", "js", "ts", "java", "c", "cpp", "out", "exe", ""] },
+        { name: "All files", extensions: ["*"] }
+      ]
+    });
+    if (canceled || filePaths.length === 0) return { canceled: true, filePath: null };
+    const filePath = filePaths[0];
+    if (args == null ? void 0 : args.openInNewWindow) {
+      createWindow(filePath);
+      return { canceled: false, filePath, openedInNewWindow: true };
+    }
+    return { canceled: false, filePath };
+  });
 }
 app.whenReady().then(async () => {
   if (!process.env.DEE_BUGR_GROQ_KEY) {
@@ -414,9 +538,11 @@ app.whenReady().then(async () => {
   } else {
     console.log("[Main] Groq API key found ✓");
   }
-  const { registerAllHandlers } = await import("./handlers-DBhTLimF.js");
+  buildMenu();
+  registerFileDialogHandler();
+  const { registerAllHandlers } = await import("./handlers-BH-BBOZp.js");
   registerAllHandlers();
-  createWindow();
+  win = createWindow();
 });
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
@@ -425,7 +551,7 @@ app.on("window-all-closed", () => {
   }
 });
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) win = createWindow();
 });
 export {
   MAIN_DIST,

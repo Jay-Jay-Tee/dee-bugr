@@ -7,6 +7,13 @@ export const IPC = {
   TERMINATE:          'dap:terminate',
   RESTART:            'dap:restart',
 
+  // ── FILE ──────────────────────────────────────────────────
+  // Opens the native OS file picker; returns the chosen path or null.
+  // openNewWindow: true → also tells the main process to spawn a second window
+  // with that file pre-loaded.
+  OPEN_FILE_DIALOG:   'app:openFileDialog',
+  READ_FILE:          'app:readFile',
+
   // ── STEPPING ──────────────────────────────────────────────
   CONTINUE:           'dap:continue',
   NEXT:               'dap:next',
@@ -59,6 +66,7 @@ export const IPC = {
   EVENT_ANOMALY:      'debug:anomaly',
   EVENT_RETURN_VAL:   'debug:returnValue',
   EVENT_BP_HIT:       'debug:breakpointHit',
+  
 } as const
 
 export type IPCChannel = typeof IPC[keyof typeof IPC]

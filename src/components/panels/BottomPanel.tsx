@@ -18,23 +18,62 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'cinema', label: '🎬 Cinema' },
 ]
 
-function TabBar({ active, onChange }: { active: Tab; onChange: (t: Tab) => void }) {
+function TabBar({ active, onChange }: { readonly active: Tab; readonly onChange: (t: Tab) => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [isCollapsed, setIsCollapsed] = useState(false)
+
+  // Responsive Check: If the Left Panel is dragged very thin
+  useEffect(() => {
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        // Left panels are often thinner; collapse if under 180px
+        setIsCollapsed(entry.contentRect.width < 180)
+      }
+    })
+    if (containerRef.current) observer.observe(containerRef.current)
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <div className="flex border-b border-[#3c3c3c] shrink-0">
-      {TABS.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => onChange(t.id)}
-          className={[
-            'px-3 py-1 text-[10px] uppercase tracking-wide transition-colors',
-            active === t.id
-              ? 'text-white border-b-2 border-blue-500 -mb-px'
-              : 'text-[#969696] hover:text-white',
-          ].join(' ')}
-        >
-          {t.label}
-        </button>
-      ))}
+    <div
+      ref={containerRef}
+      className="flex w-full border-b border-[#3c3c3c] shrink-0 bg-[#1e1e1e] overflow-hidden"
+    >
+      {TABS.map((t, i) => {
+        const isActive = active === t.id
+
+        return (
+          <div key={t.id} className="flex flex-1 items-center min-w-0">
+            {/* Divider - only between items */}
+            {i > 0 && <div className="w-px h-3 bg-[#3c3c3c] shrink-0" />}
+
+            <button
+              onClick={() => onChange(t.id)}
+              title={t.label} // Shows full name on hover even if collapsed
+              className={[
+                'flex-1 flex items-center justify-center py-2 transition-all duration-200 min-w-0 relative group',
+                isActive
+                  ? 'text-white bg-[#2d2d2d]/40'
+                  : 'text-[#969696] hover:text-white hover:bg-[#2a2d2e]/50',
+              ].join(' ')}
+            >
+              <span className="text-[12px] uppercase tracking-wider truncate px-1 font-medium">
+                {isCollapsed ? t.label.charAt(0) : t.label}
+              </span>
+
+              {/* Hover highlight for active tab */}
+              {isActive && (
+                <div className="absolute inset-0 bg-blue-500/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+              )}
+
+              {/* Bottom active indicator */}
+              {isActive && (
+                <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-[#00ffff]" />
+              )}
+            </button>
+          </div>
+        )
+      })}
     </div>
   )
 }

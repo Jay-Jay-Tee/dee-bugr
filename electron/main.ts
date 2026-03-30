@@ -1,6 +1,8 @@
+// electron/main.ts
+
 import 'dotenv/config'
 
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
@@ -11,7 +13,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 process.env.APP_ROOT = path.join(__dirname, '..')
 
 export const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
-export const MAIN_DIST    = path.join(process.env.APP_ROOT, 'dist-electron')
+export const MAIN_DIST     = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
@@ -20,8 +22,10 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
 
 let win: BrowserWindow | null
 
-function createWindow() {
-  win = new BrowserWindow({
+// ── Window factory ────────────────────────────────────────────────────────────
+
+function createWindow(filePath?: string) {
+  const w = new BrowserWindow({
     icon: path.join(process.env.VITE_PUBLIC!, 'electron-vite.svg'),
     title: 'Lucid — The Debugger That Explains Itself',
     width: 1440,
@@ -32,18 +36,171 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.mjs'),
       nodeIntegration: false,
       contextIsolation: true,
+      additionalArguments: filePath ? [`--initial-file=${filePath}`] : [],
     },
   })
 
   if (VITE_DEV_SERVER_URL) {
-    win.loadURL(VITE_DEV_SERVER_URL)
+    w.loadURL(VITE_DEV_SERVER_URL)
   } else {
-    win.loadFile(path.join(RENDERER_DIST, 'index.html'))
+    w.loadFile(path.join(RENDERER_DIST, 'index.html'))
   }
+
+  return w
 }
 
+// ── Native application menu ───────────────────────────────────────────────────
+// Adds "Open File" and "Open File in New Window" to the File menu.
+// These trigger the native OS file picker and either populate the path bar
+// in the current window, or spawn a fresh Lucid window with that file ready.
+
+function buildMenu() {
+  const isMac = process.platform === 'darwin'
+
+  // Helper: show the OS file picker relative to a given BrowserWindow
+  async function pickFile(targetWin: BrowserWindow): Promise<string | null> {
+    const { canceled, filePaths } = await dialog.showOpenDialog(targetWin, {
+      title:      'Open file to debug',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Debuggable files', extensions: ['py', 'js', 'ts', 'java', 'c', 'cpp', 'out', 'exe', ''] },
+        { name: 'All files',        extensions: ['*'] },
+      ],
+    })
+    return canceled || filePaths.length === 0 ? null : filePaths[0]
+  }
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // ── File ──────────────────────────────────────────────────────────────────
+    {
+      label: 'File',
+      submenu: [
+        {
+          label:       'Open File…',
+          accelerator: isMac ? 'Cmd+O' : 'Ctrl+O',
+          click: async (_item, focusedWindow) => {
+            const target = (focusedWindow as BrowserWindow | undefined) ?? win
+            if (!target) return
+            const filePath = await pickFile(target)
+            if (filePath) {
+              // Send chosen path to the renderer so it populates the file bar
+              target.webContents.send('app:fileSelected', filePath)
+            }
+          },
+        },
+        {
+          label:       'Open File in New Window…',
+          accelerator: isMac ? 'Cmd+Shift+O' : 'Ctrl+Shift+O',
+          click: async (_item, focusedWindow) => {
+            const source = (focusedWindow as BrowserWindow | undefined) ?? win
+            if (!source) return
+            const filePath = await pickFile(source)
+            if (filePath) {
+              createWindow(filePath)
+            }
+          },
+        },
+        { type: 'separator' },
+        isMac
+          ? { role: 'close' as const }
+          : { label: 'Exit', role: 'quit' as const },
+      ],
+    },
+
+    // ── Edit ──────────────────────────────────────────────────────────────────
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo'  as const },
+        { role: 'redo'  as const },
+        { type: 'separator' },
+        { role: 'cut'   as const },
+        { role: 'copy'  as const },
+        { role: 'paste' as const },
+        { role: 'selectAll' as const },
+      ],
+    },
+
+    // ── View ──────────────────────────────────────────────────────────────────
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload'         as const },
+        { role: 'forceReload'    as const },
+        { role: 'toggleDevTools' as const },
+        { type: 'separator' },
+        { role: 'togglefullscreen' as const },
+      ],
+    },
+
+    // ── Window ────────────────────────────────────────────────────────────────
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' as const },
+        { role: 'zoom'     as const },
+        ...(isMac ? [
+          { type: 'separator' as const },
+          { role: 'front'      as const },
+        ] : []),
+      ],
+    },
+  ]
+
+  // macOS: prepend the app menu
+  if (isMac) {
+    template.unshift({
+      label: app.name,
+      submenu: [
+        { role: 'about'     as const },
+        { type: 'separator' },
+        { role: 'services'  as const },
+        { type: 'separator' },
+        { role: 'hide'      as const },
+        { role: 'hideOthers' as const },
+        { role: 'unhide'    as const },
+        { type: 'separator' },
+        { role: 'quit'      as const },
+      ],
+    })
+  }
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template))
+}
+
+// ── IPC: file dialog (invoked by the renderer's folder-icon button) ───────────
+// Returns the chosen path string, or null if cancelled.
+
+function registerFileDialogHandler() {
+  ipcMain.handle('app:openFileDialog', async (event, args?: { openInNewWindow?: boolean }) => {
+    const senderWin = BrowserWindow.fromWebContents(event.sender)
+    if (!senderWin) return { canceled: true, filePath: null }
+
+    const { canceled, filePaths } = await dialog.showOpenDialog(senderWin, {
+      title:      'Open file to debug',
+      properties: ['openFile'],
+      filters: [
+        { name: 'Debuggable files', extensions: ['py', 'js', 'ts', 'java', 'c', 'cpp', 'out', 'exe', ''] },
+        { name: 'All files',        extensions: ['*'] },
+      ],
+    })
+
+    if (canceled || filePaths.length === 0) return { canceled: true, filePath: null }
+
+    const filePath = filePaths[0]
+
+    if (args?.openInNewWindow) {
+      createWindow(filePath)
+      return { canceled: false, filePath, openedInNewWindow: true }
+    }
+
+    return { canceled: false, filePath }
+  })
+}
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
 app.whenReady().then(async () => {
-  // ── Groq API key check ────────────────────────────────────────────────────
   if (!process.env.DEE_BUGR_GROQ_KEY) {
     console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.warn('⚠  WARNING: DEE_BUGR_GROQ_KEY is not set.')
@@ -55,10 +212,13 @@ app.whenReady().then(async () => {
     console.log('[Main] Groq API key found ✓')
   }
 
-  // Import ONCE here — do not also import at the top of this file
+  buildMenu()
+  registerFileDialogHandler()
+
   const { registerAllHandlers } = await import('../src/main/ipc/handlers')
   registerAllHandlers()
-  createWindow()
+
+  win = createWindow()
 })
 
 app.on('window-all-closed', () => {
@@ -69,5 +229,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow()
+  if (BrowserWindow.getAllWindows().length === 0) win = createWindow()
 })
