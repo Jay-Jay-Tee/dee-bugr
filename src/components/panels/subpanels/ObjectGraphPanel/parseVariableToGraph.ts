@@ -15,6 +15,12 @@ export interface DAPVariable {
 
 let nodeCounter = 0
 
+export interface GraphNode extends Node {
+  variablesReference: number;
+  isExpanded: boolean;
+  rawData: { name: string; value: string; type: string };
+}
+
 function makeId(name: string): string {
   return `${name}_${nodeCounter++}`
 }
@@ -40,19 +46,29 @@ function traverse(
   variable: DAPVariable,
   parentId: string | null,
   edgeLabel: string,
-  nodes: Node[],
+  nodes: any[], 
   edges: Edge[],
   visited: Set<number>
 ): void {
   const id = makeId(variable.name)
+  
+  // Check if children are already present in this data snapshot
+  const hasLoadedChildren = !!(variable.children && variable.children.length > 0);
 
-  // Only include fields that vis-network's Node type accepts
-  // 'value' is intentionally omitted — vis uses it as a number for sizing
   nodes.push({
     id,
     label: buildLabel(variable.name, variable.value, variable.type),
-    title: `${variable.name}: ${variable.value} (${variable.type})`,
+    // Standard vis-network tooltip (browser native style)
+    title: `Type: ${variable.type}\nValue: ${variable.value}`, 
     group: inferGroup(variable.type),
+    // Custom metadata for our Inspect panel
+    variablesReference: variable.variablesReference,
+    isExpanded: hasLoadedChildren,
+    rawData: { 
+      name: variable.name, 
+      value: variable.value, 
+      type: variable.type 
+    }
   })
 
   if (parentId !== null) {
@@ -62,11 +78,10 @@ function traverse(
   if (
     variable.variablesReference > 0 &&
     !visited.has(variable.variablesReference) &&
-    variable.children &&
-    variable.children.length > 0
+    hasLoadedChildren
   ) {
     visited.add(variable.variablesReference)
-    variable.children.forEach((child) => {
+    variable.children!.forEach((child) => {
       traverse(child, id, child.name, nodes, edges, visited)
     })
   }
