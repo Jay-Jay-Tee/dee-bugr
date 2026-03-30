@@ -10,10 +10,10 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Network, DataSet, type Node, type Edge } from 'vis-network/standalone'
-import { useDebugStore } from '../../../renderer/store/debugStore'
-import { IPC } from '../../../shared/ipc'
+import { useDebugStore } from '../../../../renderer/store/debugStore'
+import { IPC } from '../../../../shared/ipc'
 import { parseVariableToGraph, type GraphNode } from './parseVariableToGraph'
-import type { Variable } from '../../../shared/types'
+import type { Variable } from '../../../../shared/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
