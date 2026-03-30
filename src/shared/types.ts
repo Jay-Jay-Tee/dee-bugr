@@ -13,6 +13,7 @@ export interface StackFrame {
   line: number;
   column: number;
   variableCount?: number;
+  instructionPointerReference?: string;  // BUG FIX 2: required for disassemble
 }
 
 export interface Variable {

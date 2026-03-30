@@ -276,3 +276,35 @@ function addLineNumbers(source: string): string {
     .map((line, i) => `${String(i + 1).padStart(4)} | ${line}`)
     .join('\n')
 }
+
+/**
+ * MISSING FEATURE: Groq AI anomaly check for ambiguous cases.
+ * Called every 5 steps when fast rule checks found nothing suspicious.
+ * Returns Anomaly[] — empty array if nothing found or API unavailable.
+ */
+export async function checkAnomaliesWithAI(
+  variables: Array<{ name: string; value: string; type: string }>,
+  sourceSnippet: string
+): Promise<import('../../shared/types').Anomaly[]> {
+  if (!GROQ_API_KEY) return []  // silently skip if no key
+
+  const varList = variables
+    .map(v => `${v.name} = ${v.value} (${v.type})`)
+    .join(', ')
+
+  const systemPrompt = `You are a runtime anomaly detector for a debugger. Analyze the given variable values and source context for subtle bugs that simple pattern matching would miss. Examples: a pointer that is non-null but points to freed memory indicated by a suspiciously low or high address, a counter that should only grow but has decreased, a size variable that exceeds the container capacity, a variable that should be positive but is zero at a point where division is imminent. Return ONLY a JSON array (no markdown, no preamble). Empty array [] if nothing suspicious. Each element: {"variable":"name","type":"null_pointer|integer_overflow|bounds_exceeded|suspicious_jump|ai_flagged","severity":"warning|error","message":"short explanation under 20 words"}`
+
+  const userPrompt = `Variables: ${varList}\n\nSource context:\n${sourceSnippet}`
+
+  try {
+    const raw = await callGroq(systemPrompt, userPrompt)
+    // Strip markdown fences if the model disobeys
+    const clean = raw.replace(/```json|```/g, '').trim()
+    const parsed = JSON.parse(clean)
+    if (!Array.isArray(parsed)) return []
+    return parsed as import('../../shared/types').Anomaly[]
+  } catch (err) {
+    console.warn('[AI] checkAnomaliesWithAI parse/call failed:', err)
+    return []
+  }
+}
