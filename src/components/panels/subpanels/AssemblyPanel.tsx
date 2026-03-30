@@ -5,8 +5,8 @@
 // Replaces the inline AssemblyPanel function in RightPanel.tsx.
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import type { AsmLine } from '../../shared/types'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import type { AsmLine } from '../../../shared/types'
 
 // ── Mnemonic syntax highlighting ──────────────────────────────────────────────
 //

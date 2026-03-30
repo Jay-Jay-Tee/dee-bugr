@@ -5,11 +5,13 @@
 //   - Ghost BP suggestion overlay (listens to lucid:ai-suggest-bps)
 //   - AnomalyBanner improved with line number and click-to-jump
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { Anomaly, Variable } from '../../shared/types'
 import ObjectGraphPanel from './subpanels/ObjectGraphPanel/index'
+import AssemblyPanel from './subpanels/AssemblyPanel'
+import MemoryPanel from './MemoryPanel'
 
 type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'memory' | 'narrative'
 

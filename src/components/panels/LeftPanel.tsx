@@ -13,7 +13,7 @@ import type { Variable, StackFrame } from '../../shared/types'
 import BreakpointPanel from './subpanels/BreakpointPanel'
 import WatchPanel from './subpanels/WatchPanel'
 import CollectionFilter from './subpanels/CollectionFilter'
-
+import VisualCallStackPanel from './subpanels/VisualCallStackPanel'
 // ── IPC helper ────────────────────────────────────────────────────────────────
 
 type AnyIPC = typeof IPC[keyof typeof IPC]

@@ -6,9 +6,9 @@
 // Clicking any frame emits IPC.SWITCH_FRAME and highlights it.
 
 import { useState, useCallback, useMemo } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import { IPC } from '../../shared/ipc'
-import type { StackFrame } from '../../shared/types'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import { IPC } from '../../../shared/ipc'
+import type { StackFrame } from '../../../shared/types'
 
 // ── IPC shim ──────────────────────────────────────────────────────────────────
 
