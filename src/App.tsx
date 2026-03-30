@@ -4,7 +4,7 @@ import { initIPCListeners, cleanupIPCListeners } from './renderer/store/debugSto
 import { useDebugStore } from './renderer/store/debugStore'
 import { IPC } from './shared/ipc'
 import type { IPCChannel } from './shared/ipc'
-import Toolbar from './components/panels/Toolbar'
+import Toolbar from './components/panels/ToolBar'
 import MainLayout from './components/panels/MainLayout'
 import SessionErrorBanner from './components/panels/SessionErrorBanner'
 

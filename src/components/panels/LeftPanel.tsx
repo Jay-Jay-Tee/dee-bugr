@@ -429,8 +429,8 @@ export default function LeftPanel() {
     <div className="h-full flex flex-col bg-[#1e1e1e] border-r border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <div className="flex-1 overflow-hidden">
-        {activeTab === 'variables' && <VariablesPanel />}
-        {activeTab === 'callstack' && <CallStackPanel />}
+        {activeTab === 'variables'   && <VariablesPanel />}
+        {activeTab === 'callstack'   && <VisualCallStackPanel />}
         {activeTab === 'breakpoints' && <BreakpointPanel />}
         {activeTab === 'watch' && <WatchPanel />}
       </div>

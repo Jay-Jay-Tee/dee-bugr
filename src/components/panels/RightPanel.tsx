@@ -5,19 +5,20 @@
 //   - Ghost BP suggestion overlay (listens to lucid:ai-suggest-bps)
 //   - AnomalyBanner improved with line number and click-to-jump
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { Anomaly, Variable } from '../../shared/types'
 import ObjectGraphPanel from './subpanels/ObjectGraphPanel/index'
 
-type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'narrative'
+type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'memory' | 'narrative'
 
 const TABS: { id: Tab; label: string }[] = [
-  { id: 'ai', label: 'AI' },
-  { id: 'fix', label: 'Fix' },
-  { id: 'asm', label: 'Assembly' },
-  { id: 'graph', label: 'Graph' },
+  { id: 'ai',        label: 'AI'        },
+  { id: 'fix',       label: 'Fix'       },
+  { id: 'asm',       label: 'Assembly'  },
+  { id: 'graph',     label: 'Graph'     },
+  { id: 'memory',    label: 'Memory'    },
   { id: 'narrative', label: 'Narrative' },
 ]
 
@@ -117,53 +118,6 @@ function highlightAsm(instruction: string): React.ReactNode {
   )
 }
 
-function AssemblyPanel() {
-  const assemblyLines = useDebugStore((s) => s.assemblyLines)
-  const currentLine = useDebugStore((s) => s.currentLine)
-  const language = useDebugStore((s) => s.language)
-  const status = useDebugStore((s) => s.status)
-  const isBeginnerMode = useDebugStore((s) => s.isBeginnerMode)
-  const currentLineRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    currentLineRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [assemblyLines, currentLine])
-
-  if (isBeginnerMode)
-    return <div className="flex-1 flex items-center justify-center p-4 text-center text-[#555] text-xs">Assembly view hidden in Beginner mode.</div>
-  if (language !== 'c' && language !== 'cpp' && language !== 'java')
-    return <div className="flex-1 flex items-center justify-center text-[#555] text-xs p-4 text-center">Assembly available for C / C++ / Java only.</div>
-  if (status === 'idle' || status === 'terminated')
-    return <div className="flex-1 flex items-center justify-center text-[#555] text-xs">Launch a session to see assembly.</div>
-  if (assemblyLines.length === 0)
-    return <div className="flex-1 flex items-center justify-center text-[#555] text-xs">{status === 'paused' ? 'No disassembly for this frame.' : 'Step to a breakpoint.'}</div>
-
-  return (
-    <div className="flex flex-col h-full overflow-hidden">
-      <div className="px-3 py-1.5 border-b border-[#3c3c3c] shrink-0 flex gap-3 items-center">
-        <span className="text-[10px] uppercase tracking-wide text-[#969696]">Disassembly</span>
-        <span className="text-[10px] text-[#555]">{assemblyLines.length} instructions</span>
-      </div>
-      <div className="flex-1 overflow-y-auto font-mono text-[11px]">
-        {assemblyLines.map((line, i) => {
-          const isCurrent = line.sourceLine === currentLine
-          return (
-            <div key={line.address + i} ref={isCurrent ? currentLineRef : undefined}
-              className={['flex items-center px-0 py-0.5 border-b border-[#1e1e1e]',
-                isCurrent ? 'bg-[#094771] text-white' : 'hover:bg-[#2a2d2e] text-[#cccccc]'].join(' ')}>
-              <span className="w-4 shrink-0 text-center text-yellow-400">{isCurrent ? '▶' : ' '}</span>
-              <span className={'w-[110px] shrink-0 px-2 ' + (isCurrent ? 'text-yellow-300' : 'text-[#569cd6]')}>{line.address}</span>
-              {line.bytes && <span className="w-[90px] shrink-0 text-[#4a4a4a] truncate px-1">{line.bytes}</span>}
-              <span className="flex-1 px-2 truncate">{highlightAsm(line.instruction)}</span>
-              {line.sourceLine !== undefined && <span className="shrink-0 pr-2 text-[10px] text-[#444]">:{line.sourceLine}</span>}
-            </div>
-          )
-        })}
-      </div>
-      <div className="px-3 py-1 border-t border-[#3c3c3c] shrink-0 text-[10px] text-[#444]">▶ = current · :N = source line</div>
-    </div>
-  )
-}
 
 // ── AI explanation panel ──────────────────────────────────────────────────────
 
@@ -323,6 +277,7 @@ function AIFixPanel() {
   )
 }
 
+
 // ── Session narrative panel ───────────────────────────────────────────────────
 
 function NarrativePanel() {
@@ -402,10 +357,11 @@ export default function RightPanel() {
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-l border-[#3c3c3c]">
       <TabBar active={activeTab} onChange={setActiveTab} />
       <AnomalyBanner />
-      {activeTab === 'ai' && <AIExplanationPanel />}
-      {activeTab === 'fix' && <AIFixPanel />}
-      {activeTab === 'asm' && <AssemblyPanel />}
-      {activeTab === 'graph' && <ObjectGraphPanel />}
+      {activeTab === 'ai'        && <AIExplanationPanel />}
+      {activeTab === 'fix'       && <AIFixPanel />}
+      {activeTab === 'asm'       && <AssemblyPanel />}
+      {activeTab === 'graph'     && <ObjectGraphPanel />}
+      {activeTab === 'memory'    && <MemoryPanel />}
       {activeTab === 'narrative' && <NarrativePanel />}
     </div>
   )

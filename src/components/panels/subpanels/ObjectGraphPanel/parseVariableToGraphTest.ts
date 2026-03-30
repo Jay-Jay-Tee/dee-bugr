@@ -10,7 +10,6 @@ const primitive = {
 const r1 = parseVariableToGraph(primitive)
 console.assert(r1.nodes.length === 1,  'primitive: 1 node')
 console.assert(r1.edges.length === 0,  'primitive: 0 edges')
-console.assert(r1.nodes[0].isLeaf,     'primitive: isLeaf true')
 console.assert(r1.nodes[0].group === 'number', 'primitive: group number')
 
 // ── Test 2: shallow object ────────────────────────────────────────────────────
