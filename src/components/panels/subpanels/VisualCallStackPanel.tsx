@@ -160,10 +160,10 @@ function VarPill({
   max,
   height,
 }: {
-  count:  number
-  color:  string
-  max:    number
-  height: number
+  readonly count:  number
+  readonly color:  string
+  readonly max:    number
+  readonly height: number
 }) {
   // bar fill = how much of the max height this frame occupies
   const fill = Math.min((height - BOX_MIN) / (max - BOX_MIN), 1)
@@ -185,7 +185,7 @@ function VarPill({
 }
 
 // Stack depth ruler on the left side
-function DepthRuler({ frames }: { frames: StackFrame[] }) {
+function DepthRuler({ frames }: {readonly frames: StackFrame[] }) {
   if (frames.length === 0) return null
   const total = frames.reduce((acc, f) => acc + boxHeight(f), 0)
                 + (frames.length - 1) * 4  // gap
@@ -366,8 +366,8 @@ function EmptyState({
   icon,
   message,
 }: {
-  icon:    React.ReactNode
-  message: string
+  readonly icon:    React.ReactNode
+  readonly message: string
 }) {
   return (
     <div className="flex flex-col items-center justify-center gap-3 h-full px-6 text-center bg-[#111118]">
@@ -377,7 +377,7 @@ function EmptyState({
   )
 }
 
-function StackIcon({ dim = false }: { dim?: boolean }) {
+function StackIcon({ dim = false }: { readonly dim?: boolean }) {
   return (
     <svg
       width="16" height="16"
