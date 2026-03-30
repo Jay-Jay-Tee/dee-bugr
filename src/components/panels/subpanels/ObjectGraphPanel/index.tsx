@@ -10,10 +10,10 @@
 
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { Network, DataSet, type Node, type Edge } from 'vis-network/standalone'
-import { useDebugStore } from '../../../../renderer/store/debugStore'
-import { IPC } from '../../../../shared/ipc'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import { IPC } from '../../../shared/ipc'
 import { parseVariableToGraph, type GraphNode } from './parseVariableToGraph'
-import type { Variable } from '../../../../shared/types'
+import type { Variable } from '../../../shared/types'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -227,14 +227,14 @@ const LEGEND = [
   { color: '#854F0B', label: 'number'  },
   { color: '#185FA5', label: 'string'  },
   { color: '#993556', label: 'boolean' },
-  { color: '#5F5E5A', label: 'null' },
+  { color: '#5F5E5A', label: 'null'    },
 ]
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ObjectGraphPanel() {
   const variables = useDebugStore((s) => s.variables)
-  const status = useDebugStore((s) => s.status)
+  const status    = useDebugStore((s) => s.status)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const wrapRef      = useRef<HTMLDivElement>(null)   // for measuring overlay bounds
@@ -288,11 +288,12 @@ export default function ObjectGraphPanel() {
 
     const rootVar = variables?.find((v) => v.name === selectedName)
 
-    const visNodes: Node[] = initialGraph.nodes.map((gn: GraphNode, idx) => {
+    const visNodes: Node[] = (initialGraph.nodes as unknown as GraphNode[]).map((gn, idx) => {
       const isRoot = idx === 0
       const varRef = isRoot ? (rootVar?.variablesReference ?? 0) : 0
-      metaMap.current.set(gn.id, {
-        name:               gn.id.replace(/_\d+$/, ''),
+      const id=String(gn.id)
+      metaMap.current.set(id, {
+        name:               id.replace(/_\d+$/, ''),
         value:              gn.value,
         type:               gn.type,
         group:              gn.group ?? inferGroup(gn.type),
@@ -505,9 +506,7 @@ export default function ObjectGraphPanel() {
   )
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
-
-function EmptyState({ message }: {readonly message: React.ReactNode }) {
+function EmptyState({ message }: { message: React.ReactNode }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-2.5
                     text-[#444462] text-xs px-6 text-center bg-[#13121f]">
@@ -523,46 +522,5 @@ function EmptyState({ message }: {readonly message: React.ReactNode }) {
       </svg>
       <span className="leading-relaxed">{message}</span>
     </div>
-  )
-}
-
-// ── Icons (inline SVG, no dep) ─────────────────────────────────────────────
-
-function GraphIcon() {
-  return (
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="4" r="2" />
-      <circle cx="4" cy="20" r="2" />
-      <circle cx="20" cy="20" r="2" />
-      <circle cx="12" cy="14" r="2" />
-      <line x1="12" y1="6" x2="12" y2="12" />
-      <line x1="12" y1="16" x2="5" y2="19" />
-      <line x1="12" y1="16" x2="19" y2="19" />
-      <line x1="12" y1="6" x2="5" y2="18" />
-      <line x1="12" y1="6" x2="19" y2="18" />
-    </svg>
-  )
-}
-
-function FitIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <polyline points="15 3 21 3 21 9" />
-      <polyline points="9 21 3 21 3 15" />
-      <line x1="21" y1="3" x2="14" y2="10" />
-      <line x1="3" y1="21" x2="10" y2="14" />
-    </svg>
-  )
-}
-
-function RelayoutIcon() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none"
-      stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-      <polyline points="23 4 23 10 17 10" />
-      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10" />
-    </svg>
   )
 }
