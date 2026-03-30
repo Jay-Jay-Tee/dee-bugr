@@ -19,6 +19,7 @@ import { launchCppAdapter, buildCppLaunchArgs } from '../dap/adapters/cpp'
 import { launchJavaProgram, launchJavaAdapter, buildJavaAttachArgs } from '../dap/adapters/java'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
+import { checkAnomaliesWithAI } from '../ai/groq'
 import {
   DebugState,
   INITIAL_DEBUG_STATE,
@@ -166,6 +167,22 @@ export class SessionManager {
 
     if (hitIds.length > 0) {
       const { shouldContinue } = this.bpManager.onStopped(hitIds)
+
+      // MISSING FEATURE: emit EVENT_BP_HIT separately for each breakpoint struck
+      const allBPs = this.bpManager.getAll()
+      for (const dapId of hitIds) {
+        const bp = allBPs.find(b => b.dapId === dapId)
+        if (bp) {
+          this.pushToRenderer(IPC.EVENT_BP_HIT, {
+            breakpointId: bp.id,
+            dapId:        bp.dapId,
+            file:         bp.file,
+            line:         bp.line,
+            label:        bp.label,
+          })
+        }
+      }
+
       if (shouldContinue) {
         await this.continueExecution()
         return
@@ -262,8 +279,25 @@ export class SessionManager {
       throw new Error(`Language not yet supported: ${language}`)
     }
 
-    await this.sleep(1500)
-    await this.client.connect('127.0.0.1', port)
+    // BUG FIX 3: Use retry loop instead of hardcoded sleep(1500).
+    // On slow machines sleep(1500) causes connection timeout.
+    // Retry up to 10 times with 500ms intervals (5s total).
+    let connected = false
+    let lastErr: Error | null = null
+    for (let attempt = 1; attempt <= 10; attempt++) {
+      try {
+        await this.client.connect('127.0.0.1', port)
+        connected = true
+        break
+      } catch (err) {
+        lastErr = err instanceof Error ? err : new Error(String(err))
+        console.log(`[Session] Connect attempt ${attempt}/10 failed: ${lastErr.message}`)
+        if (attempt < 10) await this.sleep(500)
+      }
+    }
+    if (!connected) {
+      throw new Error(`DAPClient could not connect after 10 attempts: ${lastErr?.message}`)
+    }
     console.log('[Session] DAPClient connected')
 
     // FIX 1: pass the correct adapterID for the language
@@ -439,6 +473,26 @@ export class SessionManager {
         for (const a of anomalies) {
           this.pushToRenderer(IPC.EVENT_ANOMALY, a)
         }
+      }
+
+      // MISSING FEATURE: Groq AI anomaly fallback — runs every 5 steps when
+      // fast checks found nothing. Non-blocking (fire-and-forget) so stepping
+      // never stalls waiting for the API.
+      if (anomalies.length === 0 && this.stepCount % 5 === 0) {
+        const sourceSnippet = (this.state.sourceLines ?? [])
+          .slice(Math.max(0, this.state.currentLine - 8), this.state.currentLine + 8)
+          .join('\n')
+        checkAnomaliesWithAI(allVars, sourceSnippet)
+          .then((aiAnomalies) => {
+            if (aiAnomalies.length > 0) {
+              // Merge into state (don't overwrite fast-check results from a later step)
+              this.state.anomalies = [...this.state.anomalies, ...aiAnomalies]
+              for (const a of aiAnomalies) {
+                this.pushToRenderer(IPC.EVENT_ANOMALY, a)
+              }
+            }
+          })
+          .catch((err) => console.warn('[Session] AI anomaly check error:', err))
       }
 
     } catch (err) {

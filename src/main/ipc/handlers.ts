@@ -303,9 +303,11 @@ export function registerAllHandlers() {
     }
   })
 
+  // BUG FIX 1: READ_FILE must be inside registerAllHandlers() — was outside before
+  ipcMain.handle(IPC.READ_FILE, async (_, path: string) => {
+    const fs = await import('node:fs/promises')
+    return fs.readFile(path, 'utf-8')
+  })
+
   console.log('[IPC] All handlers registered')
 }
-ipcMain.handle(IPC.READ_FILE, async (_, path: string) => {
-  const fs = await import('node:fs/promises')
-  return fs.readFile(path, 'utf-8')
-})
