@@ -297,7 +297,7 @@ export default function ObjectGraphPanel() {
         value:              gn.value,
         type:               gn.type,
         group:              gn.group ?? inferGroup(gn.type),
-        isLeaf:             gn.isLeaf,
+       
         variablesReference: varRef,
         childrenLoaded:     false,
       })
