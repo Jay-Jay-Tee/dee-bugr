@@ -117,7 +117,7 @@ export default function MainLayout() {
       {/* Top row: Left | Center | Right */}
       <div className="flex flex-1 overflow-hidden min-h-0">
 
-        <div ref={leftRef} style={{ width: '25%' }} className="flex flex-col overflow-hidden shrink-0">
+        <div ref={leftRef} style={{ width: '24%' }} className="flex flex-col overflow-hidden shrink-0">
           <LeftPanel />
         </div>
 
@@ -129,7 +129,7 @@ export default function MainLayout() {
 
         <HDivider onMouseDown={onDragRight} />
 
-        <div ref={rightRef} style={{ width: '25%' }} className="flex flex-col overflow-hidden shrink-0">
+        <div ref={rightRef} style={{ width: '24%' }} className="flex flex-col overflow-hidden shrink-0">
           <RightPanel />
         </div>
 
@@ -138,7 +138,7 @@ export default function MainLayout() {
       <VDivider onMouseDown={onDragBottom} />
 
       {/* Bottom: Console */}
-      <div ref={bottomRef} style={{ height: '180px' }} className="flex flex-col overflow-hidden shrink-0">
+      <div ref={bottomRef} style={{ height: '42%' }} className="flex flex-col overflow-hidden shrink-0">
         <BottomPanel />
       </div>
 

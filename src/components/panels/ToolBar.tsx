@@ -1,7 +1,7 @@
 // src/components/panels/ToolBar.tsx
 // Shell only — layout + handlers. Heavy subcomponents are in subpanels/.
 
-import { useCallback } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 import type { IPCChannel } from '../../shared/ipc'
@@ -129,7 +129,20 @@ export default function Toolbar() {
   const currentFile  = useDebugStore((s) => s.currentFile)
   const currentLine  = useDebugStore((s) => s.currentLine)
   const setState     = useDebugStore((s) => s.setState)
-  const appendOutput = useDebugStore((s) => s.appendOutput)
+  const [bpNotice, setBpNotice] = useState('')
+  const bpNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showBpNotice = useCallback((message: string) => {
+    setBpNotice(message)
+    if (bpNoticeTimerRef.current) clearTimeout(bpNoticeTimerRef.current)
+    bpNoticeTimerRef.current = setTimeout(() => setBpNotice(''), 2600)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (bpNoticeTimerRef.current) clearTimeout(bpNoticeTimerRef.current)
+    }
+  }, [])
 
   const isRunning = status === 'running' || status === 'launching'
   const isPaused  = status === 'paused'
@@ -156,7 +169,7 @@ export default function Toolbar() {
   const handleFix         = useCallback(() => window.dispatchEvent(new CustomEvent('lucid:ai-fix')), [])
   const handleSuggestBPs  = useCallback(async () => {
     if (!sourceLines?.length) {
-      appendOutput('AI BP suggestions skipped: no source loaded.', 'ai')
+      showBpNotice('No source loaded for BP suggestions')
       return
     }
     const result = await invoke(IPC.AI_SUGGEST_BPS, { sourceCode: sourceLines.join('\n'), language }) as { success?: boolean; suggestions?: unknown }
@@ -168,7 +181,7 @@ export default function Toolbar() {
       : []
 
     if (!result?.success || suggestions.length === 0) {
-      appendOutput('AI BP suggestions returned no lines.', 'ai')
+      showBpNotice('AI suggested no breakpoint lines')
       return
     }
 
@@ -193,8 +206,8 @@ export default function Toolbar() {
       setState({ ...store, breakpoints: [...store.breakpoints, ...toAdd] })
     }
 
-    appendOutput(`AI suggested ${suggestions.length} BP(s); added ${toAdd.length}.`, 'ai')
-  }, [sourceLines, language, setState, appendOutput])
+    showBpNotice(`AI suggested ${suggestions.length} BPs, added ${toAdd.length}`)
+  }, [sourceLines, language, setState, showBpNotice])
 
   return (
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0 overflow-x-auto">
@@ -233,6 +246,11 @@ export default function Toolbar() {
       {anomalies.length > 0 && (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-amber-900/40 text-xs ml-1 text-amber-300 shrink-0">
           ⚠ {anomalies.length} {anomalies.length === 1 ? 'anomaly' : 'anomalies'}
+        </div>
+      )}
+      {bpNotice && (
+        <div className="flex items-center px-2 py-0.5 rounded bg-[#263238] border border-[#3a4a52] text-xs ml-1 text-[#9cdcfe] shrink-0">
+          {bpNotice}
         </div>
       )}
 
