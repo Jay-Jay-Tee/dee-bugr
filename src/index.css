@@ -186,3 +186,23 @@ button:focus-visible {
   pointer-events: none;
   white-space: pre;
 }
+
+/* ── CodeEditor: gutter hover indicator ──────────────────────────────────── */
+/* Shows user they can click gutter to set breakpoints on hover */
+.lucid-gutter-hover {
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+.lucid-gutter-hover:hover {
+  opacity: 1;
+}
+
+.lucid-gutter-hover::before {
+  content: '●';
+  color: #888;
+  font-size: 18px;
+  display: block;
+  line-height: 20px;
+  margin-left: 1px;
+}

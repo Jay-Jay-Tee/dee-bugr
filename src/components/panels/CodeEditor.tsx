@@ -31,27 +31,32 @@ const MONACO_LANG: Record<string, string> = {
 function getPlaceholderInstructions(language: string): string {
   const instructions: Record<string, string> = {
     python: [
-      '# 1. Click the Open button to load a Python file',
+      '# 1. Type in your absolute path in the box to the left of Open',
+      '# or open it through the File > Open File option',
       '# 2. Set breakpoints by clicking in the left gutter',
       '# 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     cpp: [
-      '// 1. Click the Open button to load a C++ file',
+      '// 1. Type in your absolute path in the box to the left of Open',
+      '// or open it through the File > Open File option',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     c: [
-      '// 1. Click the Open button to load a C file',
+      '// 1. Type in your absolute path in the box to the left of Open',
+      '// or open it through the File > Open File option',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     javascript: [
-      '// 1. Click the Open button to load a JavaScript file',
+      '// 1. Type in your absolute path in the box to the left of Open',
+      '// or open it through the File > Open File option',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     java: [
-      '// 1. Click the Open button to load a Java file',
+      '// 1. Type in your absolute path in the box to the left of Open',
+      '// or open it through the File > Open File option',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
@@ -183,6 +188,7 @@ export default function CodeEditor() {
   const ghostBPCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const anomalyCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const returnValCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const gutterHoverCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
   // ── Mount ─────────────────────────────────────────────────────────────────
   const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -195,6 +201,7 @@ export default function CodeEditor() {
     ghostBPCollectionRef.current   = editor.createDecorationsCollection([])
     anomalyCollectionRef.current   = editor.createDecorationsCollection([])
     returnValCollectionRef.current = editor.createDecorationsCollection([])
+    gutterHoverCollectionRef.current = editor.createDecorationsCollection([])
 
     editor.onDidChangeCursorPosition((e) => {
       globalThis.dispatchEvent(
@@ -404,6 +411,35 @@ export default function CodeEditor() {
       },
     }])
   }, [lastReturnValue, sourceLines, currentLine])
+
+  // ── Gutter hover indicator ────────────────────────────────────────────────
+  useEffect(() => {
+    const monaco = monacoRef.current
+    const col    = gutterHoverCollectionRef.current
+    const editor = editorRef.current
+    if (!monaco || !col || !editor) return
+    const model = editor.getModel()
+    if (!model) return
+    
+    const { currentFile: file, language: lang } = storeRef.current()
+    const effectiveFile = file || SYNTHETIC_FILENAME[lang] || '/tmp/lucid_scratch'
+    const bpLines = new Set(breakpoints.filter((bp) => bp.file === effectiveFile).map((bp) => bp.line))
+    
+    const lineCount = model.getLineCount()
+    const decorations = []
+    for (let line = 1; line <= lineCount; line++) {
+      // Skip lines that already have breakpoints
+      if (bpLines.has(line)) continue
+      decorations.push({
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: 'lucid-gutter-hover',
+        },
+      })
+    }
+    col.set(decorations)
+  }, [sourceLines, breakpoints, currentFile])
 
   // ── Language sync ─────────────────────────────────────────────────────────
   useEffect(() => {
