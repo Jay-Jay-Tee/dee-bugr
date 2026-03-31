@@ -230,6 +230,9 @@ const LEGEND = [
   { color: '#5F5E5A', label: 'null'    },
 ]
 
+const AUTO_EXPAND_MAX_DEPTH = 3
+const AUTO_EXPAND_MAX_NODES = 120
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function ObjectGraphPanel() {
@@ -273,6 +276,8 @@ export default function ObjectGraphPanel() {
   // ── Mount / rebuild network ──────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || !wrapRef.current) return
+
+    let cancelled = false
 
     const { width: w, height: h } = wrapRef.current.getBoundingClientRect()
     setContainerSz({ w, h })
@@ -320,6 +325,82 @@ export default function ObjectGraphPanel() {
     )
     networkRef.current = net
 
+    const autoExpandGraph = async () => {
+      if (!nodesDS.current || !edgesDS.current) return
+      if (!rootVar || rootVar.variablesReference <= 0) return
+
+      const rootId = String(visNodes[0]?.id ?? '')
+      if (!rootId) return
+
+      type WorkItem = { nodeId: string; varRef: number; depth: number }
+      const queue: WorkItem[] = [{ nodeId: rootId, varRef: rootVar.variablesReference, depth: 0 }]
+      let suffix = nodesDS.current.length
+
+      while (queue.length > 0 && !cancelled) {
+        if ((nodesDS.current.length ?? 0) >= AUTO_EXPAND_MAX_NODES) break
+
+        const item = queue.shift()!
+        if (item.depth >= AUTO_EXPAND_MAX_DEPTH) continue
+
+        const parentMeta = metaMap.current.get(item.nodeId)
+        if (!parentMeta || parentMeta.childrenLoaded) continue
+
+        const children = await fetchChildren(item.varRef)
+        if (!children.length) {
+          parentMeta.childrenLoaded = true
+          continue
+        }
+
+        const newNodes: Node[] = []
+        const newEdges: Edge[] = []
+
+        for (const child of children) {
+          if ((nodesDS.current.length + newNodes.length) >= AUTO_EXPAND_MAX_NODES) break
+
+          const id = `${child.name}_${suffix++}`
+          const group = inferGroup(child.type ?? '')
+
+          metaMap.current.set(id, {
+            name:               child.name,
+            value:              child.value,
+            type:               child.type ?? 'unknown',
+            group,
+            isLeaf:             child.variablesReference === 0,
+            variablesReference: child.variablesReference,
+            childrenLoaded:     false,
+          })
+
+          newNodes.push({
+            id,
+            label: buildLabel(child.name, child.value, child.type ?? ''),
+            group,
+            title: undefined,
+            ...(child.variablesReference > 0 ? { borderDashes: [4, 2] } : {}),
+          } as Node)
+
+          newEdges.push({ from: item.nodeId, to: id, label: child.name } as Edge)
+
+          if (child.variablesReference > 0) {
+            queue.push({ nodeId: id, varRef: child.variablesReference, depth: item.depth + 1 })
+          }
+        }
+
+        if (newNodes.length > 0) {
+          nodesDS.current.add(newNodes)
+          edgesDS.current.add(newEdges)
+        }
+
+        nodesDS.current.update([{ id: item.nodeId, borderDashes: false }] as Node[])
+        parentMeta.childrenLoaded = true
+      }
+
+      if (!cancelled) {
+        networkRef.current?.fit({ animation: { duration: 250, easingFunction: 'easeInOutQuad' } })
+      }
+    }
+
+    void autoExpandGraph()
+
     // Click → open / close overlay
     net.on('click', (params) => {
       if (params.nodes.length === 0) { setOverlay(null); return }
@@ -349,7 +430,11 @@ export default function ObjectGraphPanel() {
       setContainerSz({ w: r.width, h: r.height })
     })
 
-    return () => { net.destroy(); networkRef.current = null }
+    return () => {
+      cancelled = true
+      net.destroy()
+      networkRef.current = null
+    }
   }, [initialGraph])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Expand ───────────────────────────────────────────────────────────
