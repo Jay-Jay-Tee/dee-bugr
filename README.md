@@ -184,6 +184,21 @@ Apache 2.0 — see [LICENSE](./LICENSE)
 
 ---
 
+## AI Assistance Disclosure
+
+Parts of this project were developed with the assistance of Large Language Models (LLMs), including ChatGPT, Cursor, and Claude.
+
+The LLM was used primarily as a development aid for:
+- Generating and refining code snippets
+- Debugging and troubleshooting errors
+- Exploring alternative implementations
+
+All core ideas, architecture decisions, and final integrations were designed and implemented by the author(s).
+
+The generated code was reviewed, modified, and tested to ensure correctness and alignment with project requirements.
+
+---
+
 <p align="center">
   Built for <a href="https://fosshack.com">FOSSHack</a> by a team of 4.
 </p>
