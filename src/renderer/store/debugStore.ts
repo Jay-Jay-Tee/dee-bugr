@@ -12,14 +12,14 @@ interface DebugStore extends DebugState {
   outputLog: OutputLine[]
   isBeginnerMode: boolean
 
-  setState: (state: DebugState) => void
-  setStatus: (status: DebugState['status']) => void
-  setLanguage: (language: DebugState['language']) => void
-  appendOutput: (text: string, category: string) => void
-  toggleBeginnerMode: () => void
-  toggleBreakpoint: (file: string, line: number) => Promise<void>
-  updateBreakpoint: (id: string, patch: Partial<Breakpoint>) => Promise<void>
-  removeBreakpointById: (id: string) => Promise<void>
+  setState:            (state: DebugState) => void
+  setStatus:           (status: DebugState['status']) => void
+  setLanguage:         (language: DebugState['language']) => void
+  appendOutput:        (text: string, category: string) => void
+  toggleBeginnerMode:  () => void
+  toggleBreakpoint:    (file: string, line: number) => Promise<void>
+  updateBreakpoint:    (id: string, patch: Partial<Breakpoint>) => Promise<void>
+  removeBreakpointById:(id: string) => Promise<void>
 }
 
 function invoke(channel: IPCChannel, args?: unknown): Promise<unknown> {
@@ -54,35 +54,45 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
     set((prev) => ({ isBeginnerMode: !prev.isBeginnerMode })),
 
   toggleBreakpoint: async (file, line) => {
+    const { status } = get()
+
+    // Only sync to main process when a DAP session is active and ready.
+    // During 'idle' or 'launching' the DAP socket isn't open yet — sending
+    // IPC causes "Server disconnected" errors. Breakpoints set while idle
+    // stay in local Zustand state and are sent by the Toolbar at launch time.
+    const shouldSyncNow = status === 'running' || status === 'paused'
+
     const existing = get().breakpoints.find(
       (bp) => bp.file === file && bp.line === line
     )
 
     if (existing) {
-      // Optimistic remove
+      // Optimistic remove — always update local state immediately
       set((prev) => ({
         breakpoints: prev.breakpoints.filter((bp) => bp.id !== existing.id),
       }))
+      if (!shouldSyncNow) return
       try {
         await invoke(IPC.REMOVE_BREAKPOINT, { file, line })
       } catch (err) {
-        // Rollback on failure
+        // Rollback on IPC failure
         set((prev) => ({ breakpoints: [...prev.breakpoints, existing] }))
         console.error('Failed to remove breakpoint', err)
       }
     } else {
       // Optimistic add — unverified until main side confirms
       const optimistic: Breakpoint = {
-        id:       `bp-${file}-${line}`,
+        id: `bp-${file}-${line}`,
         file,
         line,
         verified: false,
       }
       set((prev) => ({ breakpoints: [...prev.breakpoints, optimistic] }))
+      if (!shouldSyncNow) return
       try {
         await invoke(IPC.SET_BREAKPOINT, { file, line })
       } catch (err) {
-        // Rollback on failure
+        // Rollback on IPC failure
         set((prev) => ({
           breakpoints: prev.breakpoints.filter((bp) => bp.id !== optimistic.id),
         }))
@@ -101,12 +111,12 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
     if (!bp) return
     try {
       await invoke(IPC.SET_BREAKPOINT, {
-        file:      bp.file,
-        line:      bp.line,
+        file: bp.file,
+        line: bp.line,
         condition: bp.condition,
-        hitCount:  bp.hitCountRemaining,
-        label:     bp.label,
-        groupId:   bp.groupId,
+        hitCount: bp.hitCountRemaining,
+        label: bp.label,
+        groupId: bp.groupId,
         dependsOn: bp.dependsOn,
       })
     } catch (err) {

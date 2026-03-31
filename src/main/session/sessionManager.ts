@@ -265,6 +265,13 @@ export class SessionManager {
       throw new Error(`Language not yet supported: ${language}`)
     }
 
+    // Forward raw stdout/stderr from the script process to the in-app console.
+    // This catches output that arrives before the DAP handshake routes it via
+    // 'output' events, ensuring print() always appears in the console tab.
+    if (this.adapterProcess) {
+      this.forwardProcessOutput(this.adapterProcess)
+    }
+
     return port
   }
 
@@ -774,6 +781,44 @@ export class SessionManager {
   getBPManager()       { return this.bpManager }
   getCurrentFrameId()  { return this.frameId }
   getCurrentThreadId() { return this.threadId }
+
+  // ── Forward raw process output to the renderer ───────────────────────────
+  // debugpy routes print() through DAP output events only AFTER configurationDone.
+  // Any output produced during startup (before the handshake) goes to the raw
+  // pipe and would otherwise only appear in the VS Code terminal via console.log.
+  // This method attaches a second listener that forwards raw stdout/stderr to
+  // the in-app console tab via the same EVENT_OUTPUT channel as DAP output events.
+  // Lines that look like debugpy internal messages are filtered out so the user
+  // only sees their own script's output.
+  private forwardProcessOutput(proc: ChildProcess): void {
+    const isDebugpyInternal = (line: string): boolean => {
+      // Filter debugpy's own startup chatter — users don't need to see it
+      return (
+        line.startsWith('Waiting for client') ||
+        line.startsWith('Listening on') ||
+        line.startsWith('waiting for client') ||
+        line.includes('debugpy') ||
+        line.includes('pydevd') ||
+        line.trim() === ''
+      )
+    }
+
+    const forwardLines = (raw: string, category: string) => {
+      // Split on newlines so each print() becomes its own console entry
+      for (const line of raw.split(/\r?\n/)) {
+        if (isDebugpyInternal(line)) continue
+        this.pushToRenderer(IPC.EVENT_OUTPUT, { text: line + '\n', category })
+      }
+    }
+
+    proc.stdout?.on('data', (chunk: Buffer) => {
+      forwardLines(chunk.toString(), 'stdout')
+    })
+
+    proc.stderr?.on('data', (chunk: Buffer) => {
+      forwardLines(chunk.toString(), 'stderr')
+    })
+  }
 
   private sleep(ms: number) { return new Promise<void>(r => setTimeout(r, ms)) }
 

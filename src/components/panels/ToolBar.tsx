@@ -123,7 +123,15 @@ export default function Toolbar() {
   const isRunning = status === 'running' || status === 'launching'
   const isPaused  = status === 'paused'
 
-  const handleLaunch      = useCallback((target: string) => { invoke(IPC.LAUNCH, { language, target }) }, [language])
+  // In Toolbar, handleLaunch:
+  const handleLaunch = useCallback((target: string) => {
+    const bps = useDebugStore.getState().breakpoints
+    invoke(IPC.LAUNCH, {
+      language,
+      target,
+      breakpoints: bps.map(bp => bp.line),  // ← pass pre-set breakpoints
+    })
+  }, [language])
   const handleStop        = useCallback(() => invoke(IPC.TERMINATE), [])
   const handleContinue    = useCallback(() => invoke(IPC.CONTINUE), [])
   const handlePause       = useCallback(() => invoke(IPC.PAUSE), [])
