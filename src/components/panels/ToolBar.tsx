@@ -54,10 +54,19 @@ function Divider() { return <div className="w-px h-5 bg-[#3c3c3c] mx-1 shrink-0"
 
 const LANGUAGES = [
   { value: 'python',     label: 'Python'     },
+  { value: 'c',          label: 'C'          },
   { value: 'cpp',        label: 'C / C++'    },
   { value: 'javascript', label: 'JavaScript' },
   { value: 'java',       label: 'Java'       },
 ] as const
+
+const SYNTHETIC_TARGET_BY_LANGUAGE = {
+  python: '/tmp/lucid_scratch.py',
+  cpp: '/tmp/lucid_scratch.cpp',
+  c: '/tmp/lucid_scratch.c',
+  javascript: '/tmp/lucid_scratch.js',
+  java: '/tmp/LucidScratch.java',
+} as const
 
 function LanguageSelector() {
   const language    = useDebugStore((s) => s.language)
@@ -119,6 +128,8 @@ export default function Toolbar() {
   const sourceLines  = useDebugStore((s) => s.sourceLines)
   const currentFile  = useDebugStore((s) => s.currentFile)
   const currentLine  = useDebugStore((s) => s.currentLine)
+  const setState     = useDebugStore((s) => s.setState)
+  const appendOutput = useDebugStore((s) => s.appendOutput)
 
   const isRunning = status === 'running' || status === 'launching'
   const isPaused  = status === 'paused'
@@ -144,10 +155,46 @@ export default function Toolbar() {
   const handleExplain     = useCallback(() => window.dispatchEvent(new CustomEvent('lucid:ai-explain')), [])
   const handleFix         = useCallback(() => window.dispatchEvent(new CustomEvent('lucid:ai-fix')), [])
   const handleSuggestBPs  = useCallback(async () => {
-    if (!sourceLines?.length) return
+    if (!sourceLines?.length) {
+      appendOutput('AI BP suggestions skipped: no source loaded.', 'ai')
+      return
+    }
     const result = await invoke(IPC.AI_SUGGEST_BPS, { sourceCode: sourceLines.join('\n'), language }) as { success?: boolean; suggestions?: unknown }
-    if (result?.success && result.suggestions) window.dispatchEvent(new CustomEvent('lucid:ai-suggest-bps', { detail: result.suggestions }))
-  }, [sourceLines, language])
+    const suggestions = Array.isArray(result?.suggestions)
+      ? result.suggestions.filter((s): s is { line: number; reason: string } => {
+        const candidate = s as { line?: unknown; reason?: unknown }
+        return typeof candidate.line === 'number' && Number.isFinite(candidate.line) && candidate.line > 0
+      })
+      : []
+
+    if (!result?.success || suggestions.length === 0) {
+      appendOutput('AI BP suggestions returned no lines.', 'ai')
+      return
+    }
+
+    window.dispatchEvent(new CustomEvent('lucid:ai-suggest-bps', { detail: suggestions }))
+
+    const store = useDebugStore.getState()
+    const targetFile = store.currentFile || SYNTHETIC_TARGET_BY_LANGUAGE[language]
+    if (!targetFile) return
+
+    const existingLines = new Set(store.breakpoints.filter((bp) => bp.file === targetFile).map((bp) => bp.line))
+    const toAdd = suggestions
+      .map((s) => s.line)
+      .filter((line) => !existingLines.has(line))
+      .map((line) => ({
+        id: `bp-${targetFile}-${line}`,
+        file: targetFile,
+        line,
+        verified: false,
+      }))
+
+    if (toAdd.length > 0) {
+      setState({ ...store, breakpoints: [...store.breakpoints, ...toAdd] })
+    }
+
+    appendOutput(`AI suggested ${suggestions.length} BP(s); added ${toAdd.length}.`, 'ai')
+  }, [sourceLines, language, setState, appendOutput])
 
   return (
     <div className="h-11 bg-[#1e1e1e] border-b border-[#3c3c3c] flex items-center px-2 gap-1 shrink-0 overflow-x-auto">
@@ -157,7 +204,7 @@ export default function Toolbar() {
 
       {(isRunning || isPaused)
         ? <Btn title="Stop (Shift+F5)" onClick={handleStop} variant="danger"><StopIcon /><span>Stop</span></Btn>
-        : <FileInputBar language={language} onLaunch={handleLaunch} />
+        : <FileInputBar onLaunch={handleLaunch} />
       }
 
       <Divider />
@@ -175,7 +222,7 @@ export default function Toolbar() {
 
       <Btn title="Explain Bug (AI)" onClick={handleExplain}   disabled={!isPaused} variant="accent"><span>⚡ Explain</span></Btn>
       <Btn title="Suggest Fix (AI)" onClick={handleFix}       disabled={!isPaused} variant="accent"><span>🔧 Fix</span></Btn>
-      <Btn title="AI: Suggest BPs"  onClick={handleSuggestBPs}                     variant="accent"><span>🎯 BPs</span></Btn>
+      <Btn title="Suggest BPs (AI)" onClick={handleSuggestBPs}                     variant="accent"><span>🎯 BPs</span></Btn>
 
       {lastReturn && isPaused && (
         <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-[#2d2d2d] text-xs ml-1 shrink-0">
