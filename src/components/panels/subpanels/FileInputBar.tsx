@@ -49,7 +49,14 @@ function detectLanguageFromPath(filePath: string): Language | null {
 }
 
 export default function FileInputBar({ onLaunch }: Readonly<Props>) {
-  const [value,     setValue]     = useState('')
+  // Initialize from localStorage to persist selection across debug sessions
+  const [value,     setValue]     = useState(() => {
+    try {
+      return sessionStorage.getItem('lastSelectedFile') || ''
+    } catch {
+      return ''
+    }
+  })
   const [launching, setLaunching] = useState(false)
   const [autoNotice, setAutoNotice] = useState('')
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -78,6 +85,17 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
       showAutoNotice(detected)
     }
   }, [language, setLanguage, showAutoNotice])
+
+  // Persist file selection to sessionStorage so it survives debug session restarts
+  useEffect(() => {
+    try {
+      if (value) {
+        sessionStorage.setItem('lastSelectedFile', value)
+      }
+    } catch {
+      // sessionStorage might be unavailable in some contexts
+    }
+  }, [value])
 
   // FIX 1: correct indentation + reset launching when session ends/starts
   useEffect(() => {
@@ -157,6 +175,26 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
         className="shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#969696] hover:text-white hover:bg-[#3c3c3c] transition-colors">
         <FolderIcon />
       </button>
+      
+      {/* Editable path input field */}
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={handleKeyDown}
+        placeholder={PLACEHOLDER[language]}
+        title="Enter path to file or script"
+        className="px-2 py-1.5 text-xs rounded bg-[#252526] text-[#cccccc] border border-[#3c3c3c] flex-1 min-w-0 hover:border-[#555555] focus:outline-none focus:border-[#0e639c] transition-colors"
+      />
+      
+      {/* Filename display textbox */}
+      <div
+        title={value || 'No file selected'}
+        className="px-3 py-1.5 text-xs font-semibold rounded bg-gradient-to-r from-[#2d5a7b] to-[#1e3a4d] text-[#61dafb] border-2 border-[#0e639c] shrink-0 w-40 text-ellipsis overflow-hidden whitespace-nowrap pointer-events-none shadow-lg shadow-[#0e639c]/20 hover:from-[#34648f] hover:to-[#25445a] transition-all"
+      >
+        {value ? fileName : 'No file'}
+      </div>
+      
       <button onClick={handleLaunch} disabled={!value.trim() || launching}
         title="Launch debug session"
         className="px-2 py-1.5 text-xs rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0">

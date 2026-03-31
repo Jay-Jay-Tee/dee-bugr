@@ -111,7 +111,7 @@ const STATUS_DOT: Record<string, string> = {
 
 function StatusIndicator({ status }: { readonly status: string }) {
   return (
-    <div className="flex items-center gap-1.5 text-xs text-[#969696] shrink-0 pr-4">
+    <div className="flex items-center gap-1.5 text-xs text-[#969696] shrink-0 mr-2">
       <div className={`w-2 h-2 rounded-full ${STATUS_DOT[status] ?? 'bg-[#3c3c3c]'}`} />
       <span className="capitalize">{status}</span>
     </div>
@@ -258,6 +258,8 @@ export default function Toolbar() {
       <ModeToggle />
       <Divider />
       <StatusIndicator status={status} />
+      <div className="w-4 shrink-0" />
+      {/* The above div is just to push the idle to the left a bit */}
     </div>
   )
 }
