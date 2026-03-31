@@ -38,6 +38,14 @@ interface Props {
   onLaunch: (target: string) => void
 }
 
+const PLACEHOLDER: Record<Language, string> = {
+  python: 'Path to Python script (.py)',
+  javascript: 'Path to JavaScript file (.js/.mjs/.cjs)',
+  java: 'Path to Java file (.java)',
+  c: 'Path to C file (.c)',
+  cpp: 'Path to C/C++ file (.cpp/.cc/.cxx)',
+}
+
 function detectLanguageFromPath(filePath: string): Language | null {
   const p = filePath.toLowerCase()
   if (p.endsWith('.py')) return 'python'
@@ -64,6 +72,7 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
   const language    = useDebugStore((s) => s.language)
   const setState    = useDebugStore((s) => s.setState)
   const setLanguage = useDebugStore((s) => s.setLanguage)
+  const fileName = value.split(/[/\\]/).pop() || value
 
   const showAutoNotice = useCallback((nextLanguage: Language) => {
     const label = {
@@ -168,6 +177,12 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
       applyDetectedLanguage(result.filePath)
     }
   }, [applyDetectedLanguage])
+
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      void handleLaunch()
+    }
+  }, [handleLaunch])
 
   return (
     <div className="flex items-center gap-1 flex-1 min-w-0">
