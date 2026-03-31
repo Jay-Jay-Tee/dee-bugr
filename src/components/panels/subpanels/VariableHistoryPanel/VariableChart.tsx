@@ -29,93 +29,89 @@ export default function VariableChart({ entries, variableName }: VariableChartPr
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const chartRef  = useRef<Chart | null>(null)
 
-  useEffect(() => {
-    if (!canvasRef.current) return
-
-    const labels = entries.map((e) => `s${e.step}`)
-    const data   = entries.map((e) => parseFloat(e.value))
-
-    // Points where the value changed get a different colour
-    const pointColors = entries.map((e) =>
-      e.changed ? ACCENT_CHANGED : ACCENT
-    )
-
-    const options: ChartOptions<'line'> = {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: { duration: 350, easing: 'easeInOutQuart' },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: '#1e1b2e',
-          borderColor: ACCENT,
-          borderWidth: 1,
-          titleColor: '#fff',
-          bodyColor: TICK,
-          padding: 10,
-          callbacks: {
-            title: (items: TooltipItem<'line'>[]) => {
-              const e = entries[items[0].dataIndex]
-              return `Step ${e.step}  ·  Line ${e.line}`
-            },
-            label: (item: TooltipItem<'line'>) => {
-              const e = entries[item.dataIndex]
-              const changed = e.changed ? '  ← changed' : ''
-              return ` ${variableName} = ${e.value}  (${e.type})${changed}`
-            },
+  // Build chart options (pure, no side-effects)
+  const buildOptions = (ents: FlatEntry[], varName: string): ChartOptions<'line'> => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: { duration: 350, easing: 'easeInOutQuart' },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#1e1b2e',
+        borderColor: ACCENT,
+        borderWidth: 1,
+        titleColor: '#fff',
+        bodyColor: TICK,
+        padding: 10,
+        callbacks: {
+          title: (items: TooltipItem<'line'>[]) => {
+            const e = ents[items[0].dataIndex]
+            return `Step ${e.step}  ·  Line ${e.line}`
+          },
+          label: (item: TooltipItem<'line'>) => {
+            const e = ents[item.dataIndex]
+            const changed = e.changed ? '  ← changed' : ''
+            return ` ${varName} = ${e.value}  (${e.type})${changed}`
           },
         },
       },
-      scales: {
-        x: {
-          grid:   { color: GRID },
-          ticks:  { color: TICK, font: { family: "'JetBrains Mono', monospace", size: 11 } },
-          border: { color: 'transparent' },
-        },
-        y: {
-          grid:   { color: GRID },
-          ticks:  { color: TICK, font: { family: "'JetBrains Mono', monospace", size: 11 } },
-          border: { color: 'transparent' },
-        },
+    },
+    scales: {
+      x: {
+        grid:   { color: GRID },
+        ticks:  { color: TICK, font: { family: "'JetBrains Mono', monospace", size: 11 } },
+        border: { color: 'transparent' },
       },
-    }
+      y: {
+        grid:   { color: GRID },
+        ticks:  { color: TICK, font: { family: "'JetBrains Mono', monospace", size: 11 } },
+        border: { color: 'transparent' },
+      },
+    },
+  })
 
-    if (chartRef.current) {
-      const ds = chartRef.current.data.datasets[0]
-      chartRef.current.data.labels   = labels
-      ds.data                        = data
-      ds.label                       = variableName
-      ;(ds as any).pointBackgroundColor = pointColors
-      chartRef.current.options       = options
-      chartRef.current.update()
-    } else {
-      chartRef.current = new Chart(canvasRef.current, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: variableName,
-              data,
-              borderColor: ACCENT,
-              borderWidth: 2,
-              pointBackgroundColor: pointColors,
-              pointRadius: 4,
-              pointHoverRadius: 6,
-              tension: 0.35,
-              fill: true,
-              backgroundColor: ACCENT_DIM,
-            },
-          ],
-        },
-        options,
-      })
-    }
-
+  // Create chart once on mount; update it on data changes; destroy on unmount only.
+  useEffect(() => {
+    if (!canvasRef.current) return
+    // Destroy any pre-existing chart on this canvas before creating (safety for StrictMode double-mount)
+    chartRef.current?.destroy()
+    chartRef.current = new Chart(canvasRef.current, {
+      type: 'line',
+      data: {
+        labels:   entries.map((e) => `s${e.step}`),
+        datasets: [{
+          label:               variableName,
+          data:                entries.map((e) => parseFloat(e.value)),
+          borderColor:         ACCENT,
+          borderWidth:         2,
+          pointBackgroundColor: entries.map((e) => e.changed ? ACCENT_CHANGED : ACCENT),
+          pointRadius:         4,
+          pointHoverRadius:    6,
+          tension:             0.35,
+          fill:                true,
+          backgroundColor:     ACCENT_DIM,
+        }],
+      },
+      options: buildOptions(entries, variableName),
+    })
     return () => {
       chartRef.current?.destroy()
       chartRef.current = null
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // mount/unmount only
+
+  // Update chart data whenever entries or variableName changes (no recreate)
+  useEffect(() => {
+    const chart = chartRef.current
+    if (!chart) return
+    const ds = chart.data.datasets[0]
+    chart.data.labels          = entries.map((e) => `s${e.step}`)
+    ds.data                    = entries.map((e) => parseFloat(e.value))
+    ds.label                   = variableName
+    ;(ds as any).pointBackgroundColor = entries.map((e) => e.changed ? ACCENT_CHANGED : ACCENT)
+    chart.options              = buildOptions(entries, variableName)
+    chart.update('active')
   }, [entries, variableName])
 
   return (

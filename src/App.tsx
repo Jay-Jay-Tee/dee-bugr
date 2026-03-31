@@ -1,39 +1,25 @@
 // src/App.tsx
+//
+// FIX: removed the inline keyboard shortcut handler that duplicated
+//      useKeyboardShortcuts and didn't guard by session status.
+//      Now uses the dedicated hook from renderer/hooks/useKeyboardShortcuts.ts.
+
 import { useEffect } from 'react'
 import { initIPCListeners, cleanupIPCListeners } from './renderer/store/debugStore'
-import { useDebugStore } from './renderer/store/debugStore'
-import { IPC } from './shared/ipc'
-import type { IPCChannel } from './shared/ipc'
+import { useKeyboardShortcuts } from './renderer/hooks/useKeyboardShortcuts'
 import Toolbar from './components/panels/ToolBar'
 import MainLayout from './components/panels/MainLayout'
 import SessionErrorBanner from './components/panels/SessionErrorBanner'
 
-function invoke(channel: IPCChannel, args?: unknown) {
-  return globalThis.electronAPI?.invoke(channel, args)
-    .catch((err: unknown) => console.error(`[IPC] ${channel} failed:`, err))
-}
-
 export default function App() {
+  // Boot IPC listener bridge once
   useEffect(() => {
     initIPCListeners()
     return () => cleanupIPCListeners()
   }, [])
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      const shift = e.shiftKey
-      switch (e.key) {
-        case 'F5':  e.preventDefault(); shift ? invoke(IPC.TERMINATE) : invoke(IPC.CONTINUE);  break
-        case 'F9':  e.preventDefault(); handleF9();                                             break
-        case 'F10': e.preventDefault(); invoke(IPC.NEXT);                                       break
-        case 'F11': e.preventDefault(); shift ? invoke(IPC.STEP_OUT) : invoke(IPC.STEP_IN);    break
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  // All keyboard shortcuts — F5/F9/F10/F11/Shift variants, guarded by status
+  useKeyboardShortcuts()
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-[#1e1e1e]">
@@ -42,9 +28,4 @@ export default function App() {
       <MainLayout />
     </div>
   )
-}
-
-function handleF9() {
-  const { currentFile, currentLine, toggleBreakpoint } = useDebugStore.getState()
-  if (currentFile && currentLine) toggleBreakpoint(currentFile, currentLine)
 }

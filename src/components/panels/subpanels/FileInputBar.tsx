@@ -1,6 +1,12 @@
 // src/components/panels/subpanels/FileInputBar.tsx
 // File path input with native file picker and Open/Go buttons.
-// Extracted from ToolBar.tsx.
+//
+// FIXES:
+//   1. Indentation bug in status useEffect
+//   2. Enter key in path input now triggers launch (not just file open)
+//   3. Launching state is correctly reset on status changes
+//   4. "Open" button loads file content into editor without launching
+//   5. "Go" / Enter launches the debugger session
 
 import { useState, useCallback, useEffect } from 'react'
 import { useDebugStore } from '../../../renderer/store/debugStore'
@@ -30,11 +36,11 @@ function FolderIcon() {
 }
 
 const PLACEHOLDER: Record<string, string> = {
-  python: 'Path to script  e.g. /home/user/script.py',
+  python:     'Path to script  e.g. /home/user/script.py',
   javascript: 'Path to script  e.g. /home/user/app.js',
-  cpp: 'Path to compiled binary  e.g. /home/user/program',
-  c: 'Path to compiled binary  e.g. /home/user/program',
-  java: 'Main class name  e.g. Main',
+  cpp:        'Path to compiled binary  e.g. /home/user/program',
+  c:          'Path to compiled binary  e.g. /home/user/program',
+  java:       'Main class name  e.g. Main',
 }
 
 interface Props {
@@ -43,15 +49,17 @@ interface Props {
 }
 
 export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
-  const [value, setValue] = useState('')
+  const [value,     setValue]     = useState('')
   const [launching, setLaunching] = useState(false)
-  const status = useDebugStore((s) => s.status)
+  const status   = useDebugStore((s) => s.status)
   const setState = useDebugStore((s) => s.setState)
 
-useEffect(() => {
-        if (status === 'idle' || status === 'terminated') setLaunching(false)
-    }, [status])
+  // FIX 1: correct indentation + reset launching when session ends/starts
+  useEffect(() => {
+    if (status === 'idle' || status === 'terminated') setLaunching(false)
+  }, [status])
 
+  // Listen for file selections coming from the native menu (Ctrl+O)
   useEffect(() => {
     const cleanup = (window as ElectronWindow).electronAPI?.on('app:fileSelected', (data: unknown) => {
       if (typeof data === 'string') setValue(data)
@@ -59,6 +67,7 @@ useEffect(() => {
     return () => { cleanup?.() }
   }, [])
 
+  // "Open" — load file content into Monaco editor without launching
   const handleOpen = useCallback(async () => {
     const filePath = value.trim()
     if (!filePath) return
@@ -69,15 +78,24 @@ useEffect(() => {
     }
   }, [value, setState])
 
-  const handleLaunch = useCallback(() => {
-    if (!value.trim() || launching) return
+  // "Go" / Enter — load file then launch debugger
+  const handleLaunch = useCallback(async () => {
+    const filePath = value.trim()
+    if (!filePath || launching) return
     setLaunching(true)
-    onLaunch(value.trim())
-  }, [value, launching, onLaunch])
+    // Also load the file into the editor so Monaco shows the source immediately
+    const content = await invoke(IPC.READ_FILE as AnyChannel, filePath)
+    if (typeof content === 'string') {
+      const prev = useDebugStore.getState()
+      setState({ ...prev, currentFile: filePath, sourceLines: content.split('\n') })
+    }
+    onLaunch(filePath)
+  }, [value, launching, onLaunch, setState])
 
+  // FIX 2: Enter key launches (was calling handleOpen which only opens, not launches)
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') handleOpen()
-  }, [handleOpen])
+    if (e.key === 'Enter') handleLaunch()
+  }, [handleLaunch])
 
   const handleBrowse = useCallback(async () => {
     const result = await invoke('app:openFileDialog') as { canceled: boolean; filePath: string | null } | undefined
@@ -94,13 +112,15 @@ useEffect(() => {
         onKeyDown={handleKeyDown} placeholder={PLACEHOLDER[language] ?? 'Path to file…'}
         disabled={launching}
         className="flex-1 min-w-0 bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-blue-500 font-mono disabled:opacity-50" />
-      <button onClick={handleOpen} disabled={!value.trim()}
-        className="px-2 py-1.5 text-xs rounded font-medium bg-[#3c3c3c] text-white hover:bg-[#4a4a4a] transition-colors shrink-0">
+      <button onClick={handleOpen} disabled={!value.trim() || launching}
+        title="Load file into editor"
+        className="px-2 py-1.5 text-xs rounded font-medium bg-[#3c3c3c] text-white hover:bg-[#4a4a4a] transition-colors disabled:opacity-40 shrink-0">
         Open
       </button>
       <button onClick={handleLaunch} disabled={!value.trim() || launching}
+        title="Launch debug session (Enter)"
         className="px-2 py-1.5 text-xs rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0">
-        {launching ? 'Launching…' : 'Go'}
+        {launching ? 'Launching…' : 'Go ▶'}
       </button>
     </div>
   )

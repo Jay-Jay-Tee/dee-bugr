@@ -39,6 +39,12 @@ export const useDebugStore = create<DebugStore>((set, get) => ({
       // Every EVENT_STOPPED sends the full state, but lastReturnValue is only
       // set by EVENT_RETURN_VAL — spreading would wipe it on the next stop.
       lastReturnValue: newState.lastReturnValue ?? prev.lastReturnValue,
+      // Preserve executionHistory: take whichever is longer. The main process
+      // is authoritative and always sends the full growing array, but an
+      // out-of-order or partial event must never truncate recorded history.
+      executionHistory: (newState.executionHistory?.length ?? 0) >= prev.executionHistory.length
+        ? (newState.executionHistory ?? prev.executionHistory)
+        : prev.executionHistory,
       // Similarly preserve outputLog — it grows incrementally, never from state
       outputLog: prev.outputLog,
     })),

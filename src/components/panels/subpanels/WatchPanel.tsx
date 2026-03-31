@@ -98,7 +98,7 @@ function AddWatchInput({ onAdd }: Readonly<AddWatchInputProps>) {
 // ── Watch panel ───────────────────────────────────────────────────────────────
 
 export default function WatchPanel() {
-const status = useDebugStore((s) => s.status)
+  const status = useDebugStore((s) => s.status)
   const { entries, addExpression, removeExpression } = useWatchExpressions()
 
   // Placeholder result when we can't evaluate

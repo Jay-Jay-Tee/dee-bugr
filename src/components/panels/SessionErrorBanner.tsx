@@ -1,10 +1,10 @@
 // src/components/panels/SessionErrorBanner.tsx
-// Day 8 — Shown when the debug adapter crashes or the session terminates
-// unexpectedly. Displays the last error and offers Relaunch / Dismiss.
-// Reads status from the store. If status is 'terminated' AND an errorMessage
-// is present, the banner appears.
+// Shown when the debug adapter crashes or the session terminates unexpectedly.
+//
+// FIX: removed side-effect-in-render (setDismissed called during render body).
+//      Now uses useEffect to reset dismissed state when status changes.
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import { IPC } from '../../shared/ipc'
 
@@ -24,12 +24,13 @@ export default function SessionErrorBanner() {
   const currentFile  = useDebugStore((s) => s.currentFile)
   const setStatus    = useDebugStore((s) => s.setStatus)
 
-  const [dismissed, setDismissed] = useState(false)
+  const [dismissed,   setDismissed]   = useState(false)
   const [relaunching, setRelaunching] = useState(false)
 
-  // Reset dismissed state whenever a new session starts
-  const isTerminated = status === 'terminated'
-  if (!isTerminated && dismissed) setDismissed(false)
+  // FIX: reset dismissed state in an effect, not during render
+  useEffect(() => {
+    if (status !== 'terminated') setDismissed(false)
+  }, [status])
 
   const handleRelaunch = useCallback(async () => {
     if (!currentFile) return
@@ -44,13 +45,13 @@ export default function SessionErrorBanner() {
     setStatus('idle')
   }, [setStatus])
 
-  if (!isTerminated || dismissed || !errorMessage) return null
+  if (status !== 'terminated' || dismissed || !errorMessage) return null
 
   return (
     <div className="shrink-0 flex items-start gap-3 px-3 py-2 bg-red-950/60 border-b border-red-800/60">
       <span className="text-red-400 text-sm shrink-0 mt-0.5">⛔</span>
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-red-300 font-medium mb-0.5">Session terminated</div>
+        <div className="text-xs text-red-300 font-medium mb-0.5">Session terminated unexpectedly</div>
         <div className="text-[11px] text-red-400/80 font-mono truncate" title={errorMessage}>
           {errorMessage}
         </div>

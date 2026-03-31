@@ -68,8 +68,6 @@ function VariableRow({ variable, depth = 0, isBeginnerMode = false }: Readonly<V
   }, [hasChildren, expanded, liveChildren, variable.variablesReference])
 
   const handleMouseEnter = useCallback(() => {
-    // Tooltip works in both Beginner and Expert mode.
-    // In Expert mode it's a quick technical note; in Beginner mode it's plain English.
     hoverTimer.current = setTimeout(async () => {
       try {
         const result = await invoke(IPC.AI_EXPLAIN_VAR, { varName: variable.name })
@@ -83,7 +81,7 @@ function VariableRow({ variable, depth = 0, isBeginnerMode = false }: Readonly<V
         }
       } catch { /* ignore */ }
     }, 600)
-  }, [isBeginnerMode, variable.name])
+  }, [variable.name])
 
   const handleMouseLeave = useCallback(() => {
     if (hoverTimer.current) clearTimeout(hoverTimer.current)

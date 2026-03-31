@@ -28,7 +28,18 @@ export default function VariableHistoryPanel() {
     return Array.from(names).sort()
   }, [executionHistory])
 
-  const [selected, setSelected] = useState<string>(variables[0] ?? '')
+  const [selected, setSelected] = useState<string>('')
+
+  // Keep selected valid whenever the variable list changes:
+  //   - empty on first mount → pick first variable once history arrives
+  //   - selected variable no longer in list (new session) → reset to first
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (variables.length === 0) return
+    if (!selected || !variables.includes(selected)) {
+      setSelected(variables[0])
+    }
+  }, [variables])
 
   // Extract the selected variable's value at each step it appears
   const entries: FlatEntry[] = useMemo(() => {
@@ -43,11 +54,6 @@ export default function VariableHistoryPanel() {
         changed: h.variables[selected].changed,
       }))
   }, [executionHistory, selected])
-
-  // Keep selected in sync if variables list changes (e.g. on new debug session)
-  useEffect(() => {
-    if (!selected && variables.length > 0) setSelected(variables[0])
-  }, [variables, selected])
 
   if (executionHistory.length === 0) {
     return (
