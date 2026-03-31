@@ -7,7 +7,7 @@
 //   3. Launching state is correctly reset on status changes
 //   4. "Go" launches the debugger session
 
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useDebugStore } from '../../../renderer/store/debugStore'
 import { IPC } from '../../../shared/ipc'
 import type { Language } from '../../../shared/types'
@@ -66,34 +66,18 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
     }
   })
   const [launching, setLaunching] = useState(false)
-  const [autoNotice, setAutoNotice] = useState('')
-  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const status      = useDebugStore((s) => s.status)
   const language    = useDebugStore((s) => s.language)
   const setState    = useDebugStore((s) => s.setState)
   const setLanguage = useDebugStore((s) => s.setLanguage)
   const fileName = value.split(/[/\\]/).pop() || value
 
-  const showAutoNotice = useCallback((nextLanguage: Language) => {
-    const label = {
-      python: 'Python',
-      javascript: 'JavaScript',
-      java: 'Java',
-      c: 'C',
-      cpp: 'C / C++',
-    }[nextLanguage]
-    setAutoNotice(`Auto-selected ${label}`)
-    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
-    noticeTimerRef.current = setTimeout(() => setAutoNotice(''), 2200)
-  }, [])
-
   const applyDetectedLanguage = useCallback((filePath: string) => {
     const detected = detectLanguageFromPath(filePath)
     if (detected && detected !== language) {
       setLanguage(detected)
-      showAutoNotice(detected)
     }
-  }, [language, setLanguage, showAutoNotice])
+  }, [language, setLanguage])
 
   // Persist file selection to sessionStorage so it survives debug session restarts
   useEffect(() => {
@@ -110,12 +94,6 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
   useEffect(() => {
     if (status === 'idle' || status === 'terminated') setLaunching(false)
   }, [status])
-
-  useEffect(() => {
-    return () => {
-      if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current)
-    }
-  }, [])
 
   // Listen for file selections coming from the native menu (Ctrl+O)
   useEffect(() => {
@@ -215,11 +193,6 @@ export default function FileInputBar({ onLaunch }: Readonly<Props>) {
         className="px-2 py-1.5 text-xs rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0">
         {launching ? 'Launching…' : 'Go ▶'}
       </button>
-      {autoNotice && (
-        <span className="ml-2 px-2 py-0.5 text-[10px] rounded bg-[#263238] text-[#9cdcfe] border border-[#3a4a52] shrink-0">
-          {autoNotice}
-        </span>
-      )}
     </div>
   )
 }
