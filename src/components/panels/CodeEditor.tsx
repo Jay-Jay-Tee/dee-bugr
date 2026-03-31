@@ -26,42 +26,37 @@ const MONACO_LANG: Record<string, string> = {
   java:       'java',
 }
 
-// Language-specific instructions shown in a read-only editor
-// Directs users to open a file, set breakpoints, and run it
+// Language-specific instructions shown in a read-only editor.
+// Directs users to choose a file, set breakpoints, and run it.
 function getPlaceholderInstructions(language: string): string {
   const instructions: Record<string, string> = {
     python: [
-      '# 1. Type in your absolute path in the box to the left of Open',
-      '# or open it through the File > Open File option',
-      '# or open it through the folder button (Ctrl+O) on the top right',
+      '# 1. Choose a file through File > Open File',
+      '# or through the folder button (Ctrl+O) on the top right',
       '# 2. Set breakpoints by clicking in the left gutter',
       '# 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     cpp: [
-      '// 1. Type in your absolute path in the box to the left of Open',
-      '// or open it through the File > Open File option',
-      '// or open it through the folder button (Ctrl+O) on the top right',
+      '// 1. Choose a file through File > Open File',
+      '// or through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     c: [
-      '// 1. Type in your absolute path in the box to the left of Open',
-      '// or open it through the File > Open File option',
-      '// or open it through the folder button (Ctrl+O) on the top right',
+      '// 1. Choose a file through File > Open File',
+      '// or through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     javascript: [
-      '// 1. Type in your absolute path in the box to the left of Open',
-      '// or open it through the File > Open File option',
-      '// or open it through the folder button (Ctrl+O) on the top right',
+      '// 1. Choose a file through File > Open File',
+      '// or through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     java: [
-      '// 1. Type in your absolute path in the box to the left of Open',
-      '// or open it through the File > Open File option',
-      '// or open it through the folder button (Ctrl+O) on the top right',
+      '// 1. Choose a file through File > Open File',
+      '// or through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
