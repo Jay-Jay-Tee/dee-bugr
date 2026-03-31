@@ -30,7 +30,7 @@ const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
   smoothScrolling: true,
   cursorBlinking: 'smooth',
   wordWrap: 'off',
-  readOnly: false,
+  readOnly: true,
   automaticLayout: true,
 }
 
