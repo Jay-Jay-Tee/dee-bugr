@@ -51,8 +51,13 @@ interface Props {
 export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
   const [value,     setValue]     = useState('')
   const [launching, setLaunching] = useState(false)
-  const status   = useDebugStore((s) => s.status)
-  const setState = useDebugStore((s) => s.setState)
+  const status      = useDebugStore((s) => s.status)
+  const currentFile = useDebugStore((s) => s.currentFile)
+  const setState    = useDebugStore((s) => s.setState)
+
+  // Extract just the filename from the full path
+  // Show what will be debugged (value), not what's loaded in editor (currentFile)
+  const fileName = value ? value.split(/[/\\]/).pop() || '' : ''
 
   // FIX 1: correct indentation + reset launching when session ends/starts
   useEffect(() => {
@@ -66,6 +71,23 @@ export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
     })
     return () => { cleanup?.() }
   }, [])
+
+  // FIX 3: Whenever the selected path changes, automatically load it into the editor
+  //        This ensures editor stays in sync with the path shown in the textbox
+  useEffect(() => {
+    if (!value.trim()) return
+    const filePath = value.trim()
+    invoke(IPC.READ_FILE as AnyChannel, filePath)
+      .then((content) => {
+        if (typeof content === 'string') {
+          const prev = useDebugStore.getState()
+          setState({ ...prev, currentFile: filePath, sourceLines: content.split('\n') })
+        }
+      })
+      .catch(() => {
+        // Silently fail if file doesn't exist (could be a scratch path)
+      })
+  }, [value, setState])
 
   // "Open" — load file content into Monaco editor without launching
   const handleOpen = useCallback(async () => {
@@ -122,6 +144,14 @@ export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
         className="shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#969696] hover:text-white hover:bg-[#3c3c3c] transition-colors">
         <FolderIcon />
       </button>
+      <input
+        type="text"
+        readOnly
+        value={fileName}
+        placeholder="No file"
+        title={value || 'No file selected'}
+        className="px-2 py-1.5 text-xs rounded bg-[#1e1e1e] text-[#cccccc] border border-[#3c3c3c] text-ellipsis shrink-0 w-32 pointer-events-none"
+      />
       <button onClick={handleLaunch} disabled={!value.trim() || launching}
         title="Launch debug session (Enter)"
         className="px-2 py-1.5 text-xs rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0">
