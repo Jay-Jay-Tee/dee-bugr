@@ -1,6 +1,6 @@
 // Run with: npx ts-node src/main/test/manualTest.ts
-import { launchPythonAdapter } from '../dap/adapters/python.ts'
-import { DAPClient } from '../dap/DAPClient.ts'
+import { launchPythonAdapter } from '../dap/adapters/python'
+import { DAPClient } from '../dap/DAPClient'
 import * as path from 'path'
 
 async function test() {

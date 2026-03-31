@@ -7,7 +7,7 @@
  * Set DEE_bugr_GROQ_KEY environment variable with your API key from https://console.groq.com
  */
 
-import { FormattedDebugContext, getDebugContext, getExecutionHistory } from './context'
+import { getDebugContext, getExecutionHistory } from './context'
 import { Language } from '../../shared/types'
 
 const GROQ_API_KEY = process.env.DEE_BUGR_GROQ_KEY

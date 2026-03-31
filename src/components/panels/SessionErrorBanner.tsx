@@ -20,7 +20,6 @@ function invoke(channel: AnyIPC, args?: unknown) {
 export default function SessionErrorBanner() {
   const status       = useDebugStore((s) => s.status)
   const errorMessage = useDebugStore((s) => s.errorMessage)
-  const language     = useDebugStore((s) => s.language)
   const currentFile  = useDebugStore((s) => s.currentFile)
   const setStatus    = useDebugStore((s) => s.setStatus)
 

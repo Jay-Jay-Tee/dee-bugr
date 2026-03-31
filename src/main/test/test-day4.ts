@@ -14,7 +14,6 @@
 
 import { DAPClient } from '../dap/DAPClient'
 import { launchCppAdapter, buildCppLaunchArgs } from '../dap/adapters/cpp'
-import { launchJavaProgram, launchJavaAdapter, buildJavaAttachArgs } from '../dap/adapters/java'
 
 const TEST_C_BINARY = process.env.TEST_C_BINARY ?? '/tmp/test_lucid'
 
@@ -118,10 +117,10 @@ async function quickAdapterCheck() {
   console.log('\n=== Day 4 Quick Check: All 4 Languages ===')
 
   const checks = [
-    { lang: 'Python (debugpy)',     check: () => import('../dap/adapters/python').then(m => { console.log('  python.ts: OK'); }) },
-    { lang: 'JavaScript (js-debug)', check: () => import('../dap/adapters/javascript').then(m => { console.log('  javascript.ts: OK'); }) },
-    { lang: 'C/C++ (cpptools)',     check: () => import('../dap/adapters/cpp').then(m => { console.log('  cpp.ts: OK'); }) },
-    { lang: 'Java (java-debug)',    check: () => import('../dap/adapters/java').then(m => { console.log('  java.ts: OK'); }) },
+    { lang: 'Python (debugpy)',     check: () => import('../dap/adapters/python').then(() => { console.log('  python.ts: OK'); }) },
+    { lang: 'JavaScript (js-debug)', check: () => import('../dap/adapters/javascript').then(() => { console.log('  javascript.ts: OK'); }) },
+    { lang: 'C/C++ (cpptools)',     check: () => import('../dap/adapters/cpp').then(() => { console.log('  cpp.ts: OK'); }) },
+    { lang: 'Java (java-debug)',    check: () => import('../dap/adapters/java').then(() => { console.log('  java.ts: OK'); }) },
   ]
 
   for (const { lang, check } of checks) {

@@ -7,6 +7,8 @@ assignees: ''
 
 ---
 
+**Video Demo:** [Video Demo](https://drive.google.com/drive/folders/1eytlQerOkS76fAUVTuwePqJj5S3QodKv?usp=sharing)
+
 **Describe the bug**
 A clear and concise description of what the bug is.
 
@@ -36,3 +38,7 @@ If applicable, add screenshots to help explain your problem.
 
 **Additional context**
 Add any other context about the problem here.
+
+---
+
+Made for FOSSHack '26.

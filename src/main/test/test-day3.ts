@@ -2,8 +2,8 @@
 // Run: npx ts-node src/main/test/test-day3.ts
 // PURPOSE: prove all Day 3 deliverables before handing off to P2/P3/P4
 
-import { launchPythonAdapter } from '../dap/adapters/python.ts'
-import { DAPClient } from '../dap/DAPClient.ts'
+import { launchPythonAdapter } from '../dap/adapters/python'
+import { DAPClient } from '../dap/DAPClient'
 import * as path from 'path'
 import * as fs from 'fs'
 

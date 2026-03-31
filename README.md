@@ -2,6 +2,10 @@
 
 > The open source debugger that explains itself.
 
+## Video Demo
+
+[Video Demo](https://drive.google.com/drive/folders/1eytlQerOkS76fAUVTuwePqJj5S3QodKv?usp=sharing)
+
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-teal.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)](https://github.com/your-org/dee-bugr)
 [![Languages](https://img.shields.io/badge/languages-Python%20%7C%20C%2FC%2B%2B%20%7C%20JavaScript%20%7C%20Java-orange.svg)](https://github.com/your-org/dee-bugr)
@@ -117,6 +121,12 @@ pnpm build
 # Outputs an AppImage (Linux), .dmg (macOS), or .exe (Windows)
 ```
 
+To create both a Windows installer and a conventional zip package:
+
+```bash
+pnpm exec electron-builder --win nsis zip
+```
+
 ---
 
 ## Architecture
@@ -223,5 +233,5 @@ The generated code was reviewed, modified, and tested to ensure correctness and 
 ---
 
 <p align="center">
-  Built for <a href="https://fosshack.com">FOSSHack</a> by a team of 4.
+  Made for <a href="https://fosshack.com">FOSSHack '26</a> by a team of 4.
 </p>

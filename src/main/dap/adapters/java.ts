@@ -17,13 +17,10 @@
 //   java -agentlib:jdwp=transport=dt_socket,server=y,suspend=y,address=5005 YourClass
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { spawn, ChildProcess, exec } from 'node:child_process'
+import { spawn, ChildProcess } from 'node:child_process'
 import * as net from 'node:net'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
-import { promisify } from 'node:util'
-
-const execAsync = promisify(exec)
 
 export interface LaunchedAdapter {
   process: ChildProcess

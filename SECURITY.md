@@ -1,5 +1,9 @@
 # Security Policy
 
+## Video Demo
+
+[Video Demo](https://drive.google.com/drive/folders/1eytlQerOkS76fAUVTuwePqJj5S3QodKv?usp=sharing)
+
 ## Supported versions
 
 | Version | Supported |
@@ -90,3 +94,7 @@ If you are contributing code, keep these practices in mind:
 ## Acknowledgements
 
 We are grateful to everyone who has responsibly reported issues to us. Contributors who report confirmed vulnerabilities will be credited in the relevant release notes unless they prefer to remain anonymous.
+
+---
+
+Made for FOSSHack '26.

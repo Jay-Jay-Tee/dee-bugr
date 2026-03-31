@@ -1,5 +1,9 @@
 # DEE-bugr — Setup Guide
 
+## Video Demo
+
+[Video Demo](https://drive.google.com/drive/folders/1eytlQerOkS76fAUVTuwePqJj5S3QodKv?usp=sharing)
+
 This guide covers everything needed to get DEE-bugr running locally, configure language adapters, and verify the installation works end-to-end.
 
 ---
@@ -79,6 +83,12 @@ Outputs a platform-native binary:
 | Linux | `.AppImage` |
 | macOS | `.dmg` |
 | Windows | `.exe` (NSIS installer) |
+
+To also generate a conventional Windows zip package along with the installer:
+
+```bash
+pnpm exec electron-builder --win nsis zip
+```
 
 ---
 
@@ -213,3 +223,7 @@ Verify your `JAVA_DEBUG_JAR` path points to the `.jar` file, not the directory. 
 
 **Build fails on macOS with code signing errors**  
 For local development builds, you can skip signing by setting `CSC_IDENTITY_AUTO_DISCOVERY=false` before running `pnpm build`.
+
+---
+
+Made for FOSSHack '26.

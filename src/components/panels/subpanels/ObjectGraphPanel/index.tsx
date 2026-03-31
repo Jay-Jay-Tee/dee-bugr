@@ -112,8 +112,6 @@ function buildLabel(name: string, value: string, type: string): string {
   return `${name}: ${v}`
 }
 
-let _nodeCounter = 0
-function freshId(name: string) { return `${name}_${_nodeCounter++}` }
 
 // ── NodeTooltip overlay ───────────────────────────────────────────────────────
 
@@ -264,7 +262,6 @@ export default function ObjectGraphPanel() {
     if (!selectedName || !variables?.length) return null
     const target = variables.find((v) => v.name === selectedName)
     if (!target) return null
-    _nodeCounter = 0
     return parseVariableToGraph({
       name: target.name, value: target.value,
       type: target.type ?? 'unknown',
@@ -295,16 +292,20 @@ export default function ObjectGraphPanel() {
 
     const visNodes: Node[] = (initialGraph.nodes as unknown as GraphNode[]).map((gn, idx) => {
       const isRoot = idx === 0
-      const varRef = isRoot ? (rootVar?.variablesReference ?? 0) : 0
-      const id=String(gn.id)
+      const varRef = gn.variablesReference ?? (isRoot ? (rootVar?.variablesReference ?? 0) : 0)
+      const id = String(gn.id)
+      const nodeType = gn.rawData?.type ?? 'unknown'
+      const nodeValue = gn.rawData?.value ?? ''
+      const nodeName = gn.rawData?.name ?? id.replace(/_\d+$/, '')
+      const nodeGroup = typeof gn.group === 'string' ? gn.group : inferGroup(nodeType)
       metaMap.current.set(id, {
-        name:               id.replace(/_\d+$/, ''),
-        value:              gn.value,
-        type:               gn.type,
-        group:              gn.group ?? inferGroup(gn.type),
-       
+        name:               nodeName,
+        value:              nodeValue,
+        type:               nodeType,
+        group:              nodeGroup,
+        isLeaf:             varRef === 0,
         variablesReference: varRef,
-        childrenLoaded:     false,
+        childrenLoaded:     Boolean(gn.isExpanded),
       })
       return {
         id:    gn.id,
@@ -390,7 +391,7 @@ export default function ObjectGraphPanel() {
           edgesDS.current.add(newEdges)
         }
 
-        nodesDS.current.update([{ id: item.nodeId, borderDashes: false }] as Node[])
+        nodesDS.current.update([{ id: item.nodeId, borderDashes: false }] as unknown as Node[])
         parentMeta.childrenLoaded = true
       }
 
@@ -478,7 +479,7 @@ export default function ObjectGraphPanel() {
       edgesDS.current?.add(newEdges)
 
       // Solid border = expanded
-      nodesDS.current?.update([{ id: overlay.nodeId, borderDashes: false }] as Node[])
+      nodesDS.current?.update([{ id: overlay.nodeId, borderDashes: false }] as unknown as Node[])
       meta.childrenLoaded = true
 
       // Force tooltip re-render so "Expand" button disappears

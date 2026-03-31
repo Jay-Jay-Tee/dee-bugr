@@ -1,5 +1,9 @@
 # Contributing to DEE-bugr
 
+## Video Demo
+
+[Video Demo](https://drive.google.com/drive/folders/1eytlQerOkS76fAUVTuwePqJj5S3QodKv?usp=sharing)
+
 Thanks for your interest in contributing. DEE-bugr is built in the open and welcomes contributions of all kinds — bug reports, feature requests, documentation improvements, and code.
 
 Please read this document before opening a pull request or issue.
@@ -201,3 +205,7 @@ Please open an issue to discuss the adapter before building it — we can let yo
 ## Questions
 
 If you have a question that isn't answered here, open a Discussion on GitHub or ask in the issue you're working on. We're happy to help.
+
+---
+
+Made for FOSSHack '26.

@@ -147,7 +147,7 @@ export function getExecutionHistory(): string {
     return '(no execution history yet)'
   }
 
-  const lines = history.slice(0, 10).map((entry, idx) => {
+  const lines = history.slice(0, 10).map((entry) => {
     const changedVars = Object.entries(entry.variables)
       .filter(([_, v]) => v.changed)
       .map(([name, v]) => `${name}=${v.value}`)

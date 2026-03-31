@@ -20,7 +20,6 @@ import type { Breakpoint } from '../../shared/types'
 
 type DAPRecord = Record<string, unknown>
 
-function num(v: unknown, fallback = 0) { return typeof v === 'number' ? v : fallback }
 function bool(v: unknown, fallback = false) { return typeof v === 'boolean' ? v : fallback }
 
 export class BreakpointManager {
@@ -95,7 +94,7 @@ export class BreakpointManager {
   /** Toggle an entire group on/off. */
   async toggleGroup(groupId: string, enabled: boolean): Promise<void> {
     const affected = new Set<string>()
-    for (const [id, bp] of this.breakpoints) {
+    for (const [, bp] of this.breakpoints) {
       if (bp.groupId === groupId) {
         // We use a convention: disabled BPs are kept in the map but removed from the DAP
         // The 'verified' flag doubles as enabled/active indicator for the UI

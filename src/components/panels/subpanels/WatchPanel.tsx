@@ -108,10 +108,6 @@ export default function WatchPanel() {
     addExpression(expr)
   }, [addExpression])
 
-  const handleRemove = useCallback((expr: string) => {
-    removeExpression(expr)
-  }, [removeExpression])
-
   return (
     <div className="flex flex-col h-full">
       {/* Column headers */}

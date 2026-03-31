@@ -1,12 +1,23 @@
 // electron/main.ts
 
-import 'dotenv/config'
-
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
+import dotenv from 'dotenv'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+
+// Load .env from multiple candidate paths so both dev and the installed
+// packaged app (where NSIS writes .env next to the .exe) work correctly.
+// $INSTDIR\.env  →  resources/../../.env  (two levels up from dist-electron)
+const envCandidates = [
+  path.join(__dirname, '..', '..', '.env'), // packaged: next to .exe
+  path.join(__dirname, '..', '.env'),       // packaged fallback / dev
+]
+for (const p of envCandidates) {
+  const { error } = dotenv.config({ path: p })
+  if (!error) break
+}
 
 process.env.APP_ROOT = path.join(__dirname, '..')
 
@@ -15,6 +26,9 @@ export const MAIN_DIST     = path.join(process.env.APP_ROOT, 'dist-electron')
 export const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist')
 
 process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
+  ? path.join(process.env.APP_ROOT, 'public')
+  : RENDERER_DIST
+
   ? path.join(process.env.APP_ROOT, 'public')
   : RENDERER_DIST
 

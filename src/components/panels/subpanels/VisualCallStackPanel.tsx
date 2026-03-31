@@ -68,12 +68,11 @@ interface FrameBoxProps {
   frame:       StackFrame
   index:       number          // 0 = top of stack
   depth:       number          // total frames — used for shadow layering
-  isActive:    boolean
   isSelected:  boolean
   onClick:     (frame: StackFrame) => void
 }
 
-function FrameBox({ frame, index, isActive, isSelected, onClick }: FrameBoxProps) {
+function FrameBox({ frame, index, isSelected, onClick }: FrameBoxProps) {
   const h      = boxHeight(frame)
   const color  = depthColor(index)
   const vars   = frame.variableCount ?? 0
@@ -308,7 +307,6 @@ export default function VisualCallStackPanel() {
                 frame={frame}
                 index={index}
                 depth={frames.length}
-                isActive={frame.id === frames[0]?.id}
                 isSelected={frame.id === activeId}
                 onClick={handleFrameClick}
               />

@@ -208,7 +208,6 @@ function AddressBar({
 // ── Hex row ───────────────────────────────────────────────────────────────────
 
 interface HexRowProps {
-  rowIndex:    number
   bytes:       Uint8Array
   offset:      number          // byte offset of this row's first byte in snapshot
   baseAddr:    bigint
@@ -219,7 +218,7 @@ interface HexRowProps {
 }
 
 const HexRow = ({
-  rowIndex, bytes, offset, baseAddr, regionMap, highlighted, onHover, onClick,
+  bytes, offset, baseAddr, regionMap, highlighted, onHover, onClick,
 }: HexRowProps) => {
   const rowAddr = baseAddr + BigInt(offset)
   const count   = Math.min(COLS, bytes.length - offset)
@@ -505,7 +504,6 @@ export default function MemoryPanel() {
               {Array.from({ length: rowCount }, (_, row) => (
                 <HexRow
                   key={row}
-                  rowIndex={row}
                   bytes={activeBytes}
                   offset={row * COLS}
                   baseAddr={baseAddr}
