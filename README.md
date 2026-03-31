@@ -193,7 +193,7 @@ The LLM was used primarily as a development aid for:
 - Debugging and troubleshooting errors
 - Exploring alternative implementations
 
-All core ideas, architecture decisions, and final integrations were designed and implemented by the author.
+All core ideas, architecture decisions, and final integrations were designed and implemented by the author(s).
 
 The generated code was reviewed, modified, and tested to ensure correctness and alignment with project requirements.
 
