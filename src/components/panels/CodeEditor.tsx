@@ -33,35 +33,30 @@ function getPlaceholderInstructions(language: string): string {
     python: [
       '# 1. Type in your absolute path in the box to the left of Open',
       '# or open it through the File > Open File option',
-      '# or click on the folder icon (Ctrl+O) in the top right to open a file',
       '# 2. Set breakpoints by clicking in the left gutter',
       '# 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     cpp: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
-      '// or click on the folder icon (Ctrl+O) in the top right to open a file',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     c: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
-      '// or click on the folder icon (Ctrl+O) in the top right to open a file',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     javascript: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
-      '// or click on the folder icon (Ctrl+O) in the top right to open a file',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     java: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
-      '// or click on the folder icon (Ctrl+O) in the top right to open a file',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
@@ -425,67 +420,28 @@ export default function CodeEditor() {
     if (!monaco || !col || !editor) return
     const model = editor.getModel()
     if (!model) return
-    
+
     const { currentFile: file, language: lang } = storeRef.current()
     const effectiveFile = file || SYNTHETIC_FILENAME[lang] || '/tmp/lucid_scratch'
     const bpLines = new Set(breakpoints.filter((bp) => bp.file === effectiveFile).map((bp) => bp.line))
-    const editorContainer = editor.getContainerDomNode()
-    
+
     const lineCount = model.getLineCount()
-    const gutterHoverLines = new Set<number>()
-    
-    // Track mouse position to show hover on gutter area
-    const onMouseMove = (e: MouseEvent) => {
-      const rect = editorContainer.getBoundingClientRect()
-      
-      // Check if mouse is in the gutter area (left side of editor)
-      // Typically this is roughly the first 60-70px from left
-      if (e.clientX - rect.left < 60) {
-        const contentTop = e.clientY - rect.top - 40 // Rough offset for header
-        const lineNum = Math.floor(contentTop / 20) + 1
-        if (lineNum > 0 && lineNum <= lineCount && !bpLines.has(lineNum)) {
-          gutterHoverLines.add(lineNum)
-        }
-      }
+
+    const decorations = []
+    for (let line = 1; line <= lineCount; line++) {
+      if (bpLines.has(line)) continue
+      decorations.push({
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: false,
+          glyphMarginClassName: 'lucid-gutter-hover',
+        },
+      })
     }
-    
-    const onMouseLeave = () => {
-      gutterHoverLines.clear()
-    }
-    
-    const buildDecorations = () => {
-      const decorations = []
-      for (const line of gutterHoverLines) {
-        if (!bpLines.has(line)) {
-          decorations.push({
-            range: new monaco.Range(line, 1, line, 1),
-            options: {
-              isWholeLine: false,
-              glyphMarginClassName: 'lucid-gutter-hover',
-            },
-          })
-        }
-      }
-      return decorations
-    }
-    
-    const updateDecorations = () => {
-      col.set(buildDecorations())
-    }
-    
-    const animationLoop = setInterval(() => {
-      if (gutterHoverLines.size > 0) {
-        updateDecorations()
-      }
-    }, 50)
-    
-    editorContainer.addEventListener('mousemove', onMouseMove)
-    editorContainer.addEventListener('mouseleave', onMouseLeave)
-    
+    col.set(decorations)
+
     return () => {
-      editorContainer.removeEventListener('mousemove', onMouseMove)
-      editorContainer.removeEventListener('mouseleave', onMouseLeave)
-      clearInterval(animationLoop)
+      col.set([])
     }
   }, [sourceLines, breakpoints, currentFile])
 
