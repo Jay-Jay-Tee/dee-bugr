@@ -119,10 +119,6 @@ export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
         className="shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#969696] hover:text-white hover:bg-[#3c3c3c] transition-colors">
         <FolderIcon />
       </button>
-      <input type="text" value={value} onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown} placeholder={PLACEHOLDER[language] ?? 'Path to file…'}
-        disabled={launching}
-        className="flex-1 min-w-0 bg-[#3c3c3c] text-xs text-white placeholder:text-[#555] px-2 py-1.5 rounded outline-none focus:ring-1 focus:ring-blue-500 font-mono disabled:opacity-50" />
       <button onClick={handleOpen} disabled={!value.trim() || launching}
         title="Load file into editor"
         className="px-2 py-1.5 text-xs rounded font-medium bg-[#3c3c3c] text-white hover:bg-[#4a4a4a] transition-colors disabled:opacity-40 shrink-0">
