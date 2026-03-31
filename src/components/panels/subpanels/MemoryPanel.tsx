@@ -18,8 +18,8 @@
 // any region they like.
 
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { useDebugStore } from '../../renderer/store/debugStore'
-import { IPC } from '../../shared/ipc'
+import { useDebugStore } from '../../../renderer/store/debugStore'
+import { IPC } from '../../../shared/ipc'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -356,7 +356,7 @@ export default function MemoryPanel() {
       } else {
         setFetchError(result?.error ?? 'Adapter returned no data.')
       }
-    } catch (e: any) {
+    } catch (e : any) {
       setFetchError(e.message ?? 'IPC error')
     } finally {
       setFetchLoading(false)

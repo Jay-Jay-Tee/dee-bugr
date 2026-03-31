@@ -9,7 +9,6 @@ import AIExplanationPanel from './subpanels/AIExplanationPanel'
 import AIFixPanel from './subpanels/AIFixPanel'
 import NarrativePanel from './subpanels/NarrativePanel'
 import AssemblyPanel from './subpanels/AssemblyPanel'
-import MemoryPanel from './MemoryPanel'
 import ObjectGraphPanel from './subpanels/ObjectGraphPanel/index'
 
 const TABS = [
@@ -17,11 +16,10 @@ const TABS = [
   { id: 'fix',       label: 'Fix'      },
   { id: 'asm',       label: 'Assembly' },
   { id: 'graph',     label: 'Graph'    },
-  { id: 'memory',    label: 'Memory'   },
   { id: 'narrative', label: 'Narrative'},
 ]
 
-type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'memory' | 'narrative'
+type Tab = 'ai' | 'fix' | 'asm' | 'graph' | 'narrative'
 
 function AnomalyBanner() {
   const anomalies = useDebugStore((s) => s.anomalies)
@@ -66,7 +64,6 @@ export default function RightPanel() {
       {activeTab === 'fix'       && <AIFixPanel />}
       {activeTab === 'asm'       && <AssemblyPanel />}
       {activeTab === 'graph'     && <ObjectGraphPanel />}
-      {activeTab === 'memory'    && <MemoryPanel />}
       {activeTab === 'narrative' && <NarrativePanel />}
     </div>
   )

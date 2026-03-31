@@ -6,6 +6,7 @@ import { useDebugStore } from '../../renderer/store/debugStore'
 import DebugCinema from './subpanels/DebugCinema'
 import MemoryAddressInput from './subpanels/MemoryAddressInput'
 import VariableHistoryPanel from './subpanels/VariableHistoryPanel/index'
+import MemoryPanel from './subpanels/MemoryPanel'
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -189,7 +190,7 @@ export default function BottomPanel() {
       <TabBar active={tab} onChange={setTab} />
       {tab === 'console' && <ConsoleTab />}
       {tab === 'history' && <VariableHistoryPanel />}
-      {tab === 'memory' && <MemoryTab />}
+      {tab === 'memory' && <MemoryPanel />}
       {tab === 'cinema' && <DebugCinema />}
     </div>
   )
