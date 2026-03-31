@@ -110,19 +110,17 @@ export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
 
   const handleBrowse = useCallback(async () => {
     const result = await invoke('app:openFileDialog') as { canceled: boolean; filePath: string | null } | undefined
-    if (result && !result.canceled && result.filePath) setValue(result.filePath)
-  }, [])
+    if (result && !result.canceled && result.filePath) {
+      setValue(result.filePath)
+      await handleOpen()
+    }
+  }, [handleOpen])
 
   return (
     <div className="flex items-center gap-1 flex-1 min-w-0">
       <button onClick={handleBrowse} title="Browse for file (Ctrl+O)"
         className="shrink-0 flex items-center justify-center w-7 h-7 rounded text-[#969696] hover:text-white hover:bg-[#3c3c3c] transition-colors">
         <FolderIcon />
-      </button>
-      <button onClick={handleOpen} disabled={!value.trim() || launching}
-        title="Load file into editor"
-        className="px-2 py-1.5 text-xs rounded font-medium bg-[#3c3c3c] text-white hover:bg-[#4a4a4a] transition-colors disabled:opacity-40 shrink-0">
-        Open
       </button>
       <button onClick={handleLaunch} disabled={!value.trim() || launching}
         title="Launch debug session (Enter)"
