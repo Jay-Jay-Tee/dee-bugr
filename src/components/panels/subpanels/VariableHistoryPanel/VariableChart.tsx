@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import {
   Chart,
+  LineController,
   LineElement,
   PointElement,
   LinearScale,
@@ -12,7 +13,7 @@ import {
 } from 'chart.js'
 import type { FlatEntry } from './index'
 
-Chart.register(LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler)
+Chart.register(LineController, LineElement, PointElement, LinearScale, CategoryScale, Tooltip, Filler)
 
 const ACCENT      = '#7c6af7'
 const ACCENT_CHANGED = '#f76a6a'

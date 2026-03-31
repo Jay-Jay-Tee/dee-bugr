@@ -128,9 +128,9 @@ button:focus-visible {
 .lucid-ghost-bp-glyph {
   background: rgba(100, 180, 255, 0.5);
   border-radius: 50%;
-  width: 10px !important;
-  height: 10px !important;
-  margin-top: 4px;
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: 3px;
   margin-left: 11px;
   border: 1px dashed #75beff;
 }
@@ -190,6 +190,12 @@ button:focus-visible {
 /* ── CodeEditor: gutter hover indicator ──────────────────────────────────── */
 /* Shows user they can click gutter to set breakpoints on hover */
 .lucid-gutter-hover {
+  width: 12px !important;
+  height: 12px !important;
+  margin-top: 3px;
+  margin-left: 10px;
+  border-radius: 50%;
+  background: #888;
   opacity: 0;
   transition: opacity 0.15s ease-in-out;
 }
@@ -198,23 +204,16 @@ button:focus-visible {
   opacity: 1;
 }
 
-.lucid-gutter-hover::before {
-  content: '●';
-  color: #888;
-  font-size: 18px;
-  display: block;
-  line-height: 20px;
-  margin-left: 10px;
-}
-
-/* ── CodeEditor: permanent gutter guide (yellow) ────────────────────────── */
-.lucid-gutter-guide {
+/* ── CodeEditor: anomaly guide bars (permanent on anomaly lines) ────────── */
+.lucid-anomaly-guide-warn,
+.lucid-anomaly-guide-error {
   width: 100%;
   height: 100%;
   position: relative;
 }
 
-.lucid-gutter-guide::before {
+.lucid-anomaly-guide-warn::before,
+.lucid-anomaly-guide-error::before {
   content: '';
   position: absolute;
   left: 2px;
@@ -222,6 +221,13 @@ button:focus-visible {
   bottom: 2px;
   width: 2px;
   border-radius: 2px;
-  background: #ffcc00;
   opacity: 0.95;
+}
+
+.lucid-anomaly-guide-warn::before {
+  background: #ffcc00;
+}
+
+.lucid-anomaly-guide-error::before {
+  background: #f48771;
 }

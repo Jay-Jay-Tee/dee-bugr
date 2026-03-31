@@ -146,8 +146,7 @@ function buildAnomalyDecorations(
     options: {
       isWholeLine: true,
       className:           anomaly.severity === 'error' ? 'lucid-anomaly-line-error' : 'lucid-anomaly-line-warn',
-      glyphMarginClassName: anomaly.severity === 'error' ? 'lucid-anomaly-glyph-error' : 'lucid-anomaly-glyph-warn',
-      glyphMarginHoverMessage: { value: `${anomaly.severity === 'error' ? '⛔' : '⚠️'} ${anomaly.message}` },
+      lineDecorationsClassName: anomaly.severity === 'error' ? 'lucid-anomaly-guide-error' : 'lucid-anomaly-guide-warn',
       overviewRuler: {
         color:    anomaly.severity === 'error' ? '#f48771' : '#ffcc00',
         position: monaco.editor.OverviewRulerLane.Right,
@@ -195,7 +194,6 @@ export default function CodeEditor() {
   const anomalyCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const returnValCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const gutterHoverCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
-  const gutterGuideCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
   // ── Mount ─────────────────────────────────────────────────────────────────
   const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -209,7 +207,6 @@ export default function CodeEditor() {
     anomalyCollectionRef.current   = editor.createDecorationsCollection([])
     returnValCollectionRef.current = editor.createDecorationsCollection([])
     gutterHoverCollectionRef.current = editor.createDecorationsCollection([])
-    gutterGuideCollectionRef.current = editor.createDecorationsCollection([])
 
     editor.onDidChangeCursorPosition((e) => {
       globalThis.dispatchEvent(
@@ -419,33 +416,6 @@ export default function CodeEditor() {
       },
     }])
   }, [lastReturnValue, sourceLines, currentLine])
-
-  // ── Permanent gutter guide (yellow) ───────────────────────────────────────
-  useEffect(() => {
-    const monaco = monacoRef.current
-    const col    = gutterGuideCollectionRef.current
-    const editor = editorRef.current
-    if (!monaco || !col || !editor) return
-    const model = editor.getModel()
-    if (!model) return
-
-    const lineCount = model.getLineCount()
-    const decorations = []
-    for (let line = 1; line <= lineCount; line++) {
-      decorations.push({
-        range: new monaco.Range(line, 1, line, 1),
-        options: {
-          isWholeLine: false,
-          lineDecorationsClassName: 'lucid-gutter-guide',
-        },
-      })
-    }
-    col.set(decorations)
-
-    return () => {
-      col.set([])
-    }
-  }, [sourceLines])
 
   // ── Gutter hover indicator ────────────────────────────────────────────────
   useEffect(() => {
