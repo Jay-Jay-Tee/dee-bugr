@@ -26,13 +26,37 @@ const MONACO_LANG: Record<string, string> = {
   java:       'java',
 }
 
-// Default placeholder per language shown in an empty editor
-const PLACEHOLDER_CODE: Record<string, string> = {
-  python:     '# Write your Python code here, then click Go ▶ to debug it\n',
-  cpp:        '// Write your C++ code here, then click Go ▶ to debug it\n',
-  c:          '// Write your C code here, then click Go ▶ to debug it\n',
-  javascript: '// Write your JavaScript code here, then click Go ▶ to debug it\n',
-  java:       '// Write your Java code here, then click Go ▶ to debug it\n',
+// Language-specific instructions shown in a read-only editor
+// Directs users to open a file, set breakpoints, and run it
+function getPlaceholderInstructions(language: string): string {
+  const instructions: Record<string, string> = {
+    python: [
+      '# 1. Click the Open button to load a Python file',
+      '# 2. Set breakpoints by clicking in the left gutter',
+      '# 3. Click Go ▶ to start debugging',
+    ].join('\n') + '\n',
+    cpp: [
+      '// 1. Click the Open button to load a C++ file',
+      '// 2. Set breakpoints by clicking in the left gutter',
+      '// 3. Click Go ▶ to start debugging',
+    ].join('\n') + '\n',
+    c: [
+      '// 1. Click the Open button to load a C file',
+      '// 2. Set breakpoints by clicking in the left gutter',
+      '// 3. Click Go ▶ to start debugging',
+    ].join('\n') + '\n',
+    javascript: [
+      '// 1. Click the Open button to load a JavaScript file',
+      '// 2. Set breakpoints by clicking in the left gutter',
+      '// 3. Click Go ▶ to start debugging',
+    ].join('\n') + '\n',
+    java: [
+      '// 1. Click the Open button to load a Java file',
+      '// 2. Set breakpoints by clicking in the left gutter',
+      '// 3. Click Go ▶ to start debugging',
+    ].join('\n') + '\n',
+  }
+  return instructions[language] || ''
 }
 
 // Synthetic temp filename used when the user types directly without loading a file.
@@ -52,6 +76,7 @@ const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
   glyphMargin:         true,
   lineNumbers:         'on',
   scrollBeyondLastLine: false,
+  readOnly:           true,
   renderWhitespace:    'none',
   smoothScrolling:     true,
   cursorBlinking:      'smooth',
@@ -172,7 +197,7 @@ export default function CodeEditor() {
     returnValCollectionRef.current = editor.createDecorationsCollection([])
 
     editor.onDidChangeCursorPosition((e) => {
-      window.dispatchEvent(
+      globalThis.dispatchEvent(
         new CustomEvent('lucid:cursor-line', { detail: e.position.lineNumber })
       )
     })
@@ -198,17 +223,17 @@ export default function CodeEditor() {
       const file = store.currentFile || SYNTHETIC_FILENAME[store.language] || '/tmp/lucid_scratch'
       store.toggleBreakpoint(file, line)
     }
-    window.addEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
+    globalThis.addEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
 
     const cinemaStep = (e: Event) => {
       const { line } = (e as CustomEvent<{ file: string; line: number }>).detail
       if (line) editor.revealLineInCenterIfOutsideViewport(line, 1)
     }
-    window.addEventListener('lucid:cinema-step', cinemaStep)
+    globalThis.addEventListener('lucid:cinema-step', cinemaStep)
 
     editor.onDidDispose(() => {
-      window.removeEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
-      window.removeEventListener('lucid:cinema-step', cinemaStep)
+      globalThis.removeEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
+      globalThis.removeEventListener('lucid:cinema-step', cinemaStep)
     })
   }, [])
 
@@ -344,8 +369,8 @@ export default function CodeEditor() {
       })))
       setTimeout(() => col.set([]), 30_000)
     }
-    window.addEventListener('lucid:ai-suggest-bps', handler)
-    return () => window.removeEventListener('lucid:ai-suggest-bps', handler)
+    globalThis.addEventListener('lucid:ai-suggest-bps', handler)
+    return () => globalThis.removeEventListener('lucid:ai-suggest-bps', handler)
   }, [])
 
   // ── Anomaly gutter indicators ─────────────────────────────────────────────
@@ -390,8 +415,8 @@ export default function CodeEditor() {
     monaco.editor.setModelLanguage(model, MONACO_LANG[language] ?? 'plaintext')
   }, [language])
 
-  // FIX: no mock fallback — start blank with a language-appropriate placeholder comment
-  const sourceContent = sourceLines?.join('\n') ?? PLACEHOLDER_CODE[language] ?? ''
+  // FIX: no mock fallback — start blank with language-appropriate placeholder instructions
+  const sourceContent = sourceLines?.join('\n') ?? getPlaceholderInstructions(language) ?? ''
 
   return (
     <div
