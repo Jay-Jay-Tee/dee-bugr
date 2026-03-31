@@ -1,4 +1,8 @@
-# DEE-bugr — Setup Guide (Day 10)
+# DEE-bugr — Setup Guide
+
+This guide covers everything needed to get DEE-bugr running locally, configure language adapters, and verify the installation works end-to-end.
+
+---
 
 ## Prerequisites
 
@@ -6,140 +10,203 @@
 |------|---------|---------|
 | Node.js | 20 LTS | `nvm install 20` |
 | pnpm | latest | `npm i -g pnpm` |
-| Python | 3.9+ | system |
+| Python | 3.9+ | system or [python.org](https://python.org) |
 | debugpy | latest | `pip install debugpy` |
-| GDB | any | `sudo apt install gdb` or Xcode CLT on macOS |
-| Java | 11+ | system (optional — for Java demo) |
+| GDB | any | `sudo apt install gdb` / Xcode CLT on macOS |
+| Java (optional) | 11+ | system JDK |
 
-## 1. Clone & Install
+---
+
+## 1. Clone & install dependencies
 
 ```bash
-git clone <repo-url>
-cd dee-bugr-main
+git clone https://github.com/your-org/dee-bugr.git
+cd dee-bugr
 pnpm install
 ```
 
-## 2. Set Groq API Key
+---
+
+## 2. Configure environment variables
 
 ```bash
 cp .env.example .env
-# Edit .env and paste your key:
-#   DEE_BUGR_GROQ_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
-# Get a free key at https://console.groq.com
 ```
 
-## 3. Run in Development
+Open `.env` and fill in your values:
+
+```env
+# Groq API key — get a free key at https://console.groq.com
+DEE_BUGR_GROQ_KEY=gsk_xxxxxxxxxxxxxxxxxxxx
+
+# AI provider mode: "groq" (default, cloud) or "local" (Ollama, offline)
+DEE_BUGR_AI_MODE=groq
+
+# (C/C++ only, optional) Path to cpptools OpenDebugAD7 binary
+# CPPTOOLS_ADAPTER_PATH=~/.vscode/extensions/ms-vscode.cpptools-X.Y.Z/debugAdapters/bin/OpenDebugAD7
+
+# (Java only, optional) Path to java-debug plugin JAR
+# JAVA_DEBUG_JAR=/path/to/com.microsoft.java.debug.plugin-*.jar
+```
+
+> **Never commit your `.env` file.** It is already listed in `.gitignore`.
+
+---
+
+## 3. Run in development
 
 ```bash
 pnpm dev
 ```
 
-This opens the DEE-bugr Electron window with hot reload.
+This opens the DEE-bugr Electron window with hot reload enabled. Changes to renderer code reflect immediately; changes to the main process require a restart.
 
-## 4. Build Demo Programs
+---
+
+## 4. Build a distributable
 
 ```bash
-# C demo (required for the main presentation)
+pnpm build
+```
+
+Outputs a platform-native binary:
+
+| Platform | Output |
+|----------|--------|
+| Linux | `.AppImage` |
+| macOS | `.dmg` |
+| Windows | `.exe` (NSIS installer) |
+
+---
+
+## 5. Language adapter setup
+
+### Python
+
+Python debugging works out of the box once `debugpy` is installed:
+
+```bash
+pip install debugpy
+```
+
+DEE-bugr auto-detects and launches debugpy when you open a `.py` file.
+
+### C / C++
+
+**Option A — System GDB (recommended, easiest):**
+
+```bash
+# Verify GDB is on your PATH
+which gdb
+```
+
+The cpptools adapter auto-detects GDB. No additional configuration needed.
+
+**Option B — cpptools adapter from VS Code extension:**
+
+```bash
+# List installed VS Code extensions
+ls ~/.vscode/extensions/ | grep cpptools
+
+# The adapter binary lives at:
+# ~/.vscode/extensions/ms-vscode.cpptools-X.Y.Z/debugAdapters/bin/OpenDebugAD7
+
+# Add to .env:
+# CPPTOOLS_ADAPTER_PATH=<path above>
+```
+
+### JavaScript / Node.js
+
+No setup required. DEE-bugr bundles `@vscode/js-debug` and uses it automatically for `.js` and `.mjs` files.
+
+### Java (optional)
+
+**Option A — VS Code Java extension:**
+
+```bash
+ls ~/.vscode/extensions/ | grep vscjava.vscode-java-debug
+# JAR path: ~/.vscode/extensions/vscjava.vscode-java-debug-*/server/com.microsoft.java.debug.plugin-*.jar
+```
+
+Set `JAVA_DEBUG_JAR` in `.env` to that path.
+
+**Option B — Build from source:**
+
+```bash
+git clone https://github.com/microsoft/java-debug.git
+cd java-debug
+mvn package -DskipTests
+# Set JAVA_DEBUG_JAR to: com.microsoft.java.debug.plugin/target/com.microsoft.java.debug.plugin-*.jar
+```
+
+---
+
+## 6. Build demo programs
+
+Demo programs are included in the repository root for testing and presentation:
+
+```bash
+# C demo — compile before use
 gcc -g -O0 -o demo demo.c
 
 # Python demo — no compilation needed
-# Run directly via DEE-bugr's file picker
+# Open demo.py directly via DEE-bugr's file picker
 ```
 
-## 5. Adapter Setup (C/C++)
+The `-g` flag includes debug symbols. The `-O0` flag disables optimizations that can confuse single-step debugging.
 
-**Option A — Use system GDB (easiest):**
-The cpptools adapter auto-detects GDB. Make sure `gdb` is on your PATH:
-```bash
-which gdb   # should return a path
-```
+---
 
-**Option B — Use cpptools from VS Code extension:**
-```bash
-# Find your VS Code extension directory
-ls ~/.vscode/extensions/ | grep cpptools
+## 7. Offline / local AI mode
 
-# The adapter binary is at:
-# ~/.vscode/extensions/ms-vscode.cpptools-*/debugAdapters/bin/OpenDebugAD7
-
-# Set in .env:
-# CPPTOOLS_ADAPTER_PATH=~/.vscode/extensions/ms-vscode.cpptools-X.Y.Z/debugAdapters/bin/OpenDebugAD7
-```
-
-## 6. Adapter Setup (Java — optional)
+If you prefer to run AI features without a network connection, install [Ollama](https://ollama.com) and pull the code model:
 
 ```bash
-# Option A: use VS Code Java extension
-ls ~/.vscode/extensions/ | grep vscjava.vscode-java-debug
-# JAR is at: ~/.vscode/extensions/vscjava.vscode-java-debug-*/server/com.microsoft.java.debug.plugin-*.jar
-# Set in .env: JAVA_DEBUG_JAR=<path>
-
-# Option B: build from source
-git clone https://github.com/microsoft/java-debug.git
-cd java-debug && mvn package -DskipTests
-# Set: JAVA_DEBUG_JAR=<path>/com.microsoft.java.debug.plugin/target/com.microsoft.java.debug.plugin-*.jar
+ollama pull codellama:13b
 ```
 
-## 7. Demo Walkthrough (7 minutes)
+Then set in `.env`:
 
-### Opening (0:00 — 0:45)
-1. Launch DEE-bugr
-2. Select **C / C++** from the language selector
-3. Type the path to the compiled `demo` binary in the file input, click **Go**
-4. Click **🎯 BPs** — 5 ghost breakpoints appear (AI pre-run suggestion)
-5. Click one of the ghost BPs to accept it (line 35)
+```env
+DEE_BUGR_AI_MODE=local
+```
 
-### Hit the Bug (0:45 — 1:15)
-6. The program hits the breakpoint automatically
-7. Anomaly badge appears in the toolbar: **⚠ 1 anomaly**
-8. Right panel shows: `node is a null pointer — dereferencing will crash`
+AI explanations, fixes, and narratives will run via `codellama:13b` entirely on-device.
 
-### Object Graph (1:15 — 1:45)
-9. In the left panel (Variables tab), right-click `root` → **Visualise**
-10. The Graph tab opens — tree renders as interactive nodes
-11. The NULL node glows red — click it
+---
 
-### AI Explain (1:45 — 2:15)
-12. Click **⚡ Explain** in the toolbar
-13. AI panel shows streaming explanation
-14. Toggle to **Beginner mode** — explanation becomes plain English
+## 8. Verification checklist
 
-### Fix (2:15 — 2:45)
-15. Click **🔧 Fix**
-16. Diff view appears — 3-line change
-17. Click **✓ Accept** — fix copied to clipboard
+Run through this list after setup to confirm everything is working:
 
-### Debug Cinema (2:45 — 3:30)
-18. Run the fixed program to completion
-19. Open the **🎬 Cinema** tab in the bottom panel
-20. Click **▶ Play** — watch the session replay step by step
-
-### Python + History Timeline (3:30 — 4:15)
-21. Switch to **Python** language, open `demo.py`
-22. Set breakpoint on line 27 (`shared_list.append`)
-23. Step through — History tab shows `shared_list` growing
-24. Open **History** tab, select `shared_list` variable
-
-### Session Narrative (5:30 — 6:00)
-25. Open the **Narrative** tab in the right panel
-26. Click **📖 Generate Narrative**
-27. AI writes a 4-sentence summary of the debug session
-
-### Close (6:30)
-> *"This is DEE-bugr — the debugger that explains itself. Every feature you just saw — none of it exists in VSCode, GDB, or IntelliJ's open source tooling."*
-
-## 8. Day 10 Checklist
-
-- [ ] `pnpm dev` opens DEE-bugr without errors
-- [ ] `demo.c` compiled and breakpoint hits on line 35
-- [ ] Anomaly detection fires automatically (null pointer)
-- [ ] AI Explain returns a good explanation (test 3x)
-- [ ] AI Fix returns a usable diff
-- [ ] Ghost BPs appear when clicking 🎯 BPs
-- [ ] Debug Cinema plays and scrubs
-- [ ] Python demo works and History tab populates
+- [ ] `pnpm dev` opens DEE-bugr without console errors
+- [ ] Compile `demo.c` and open it — breakpoint hits on the expected line
+- [ ] Anomaly detection fires automatically (null pointer badge appears in toolbar)
+- [ ] **AI Explain** returns a coherent explanation
+- [ ] **AI Fix** returns a usable diff
+- [ ] Ghost breakpoints appear when clicking the **🎯 BPs** button
+- [ ] Debug Cinema plays and scrubs correctly
+- [ ] Python demo works and the History tab populates
 - [ ] Session Narrative generates at session end
-- [ ] Beginner/Expert toggle changes all panels
+- [ ] Beginner/Expert toggle changes panel language across all panels
 - [ ] Keyboard shortcuts work: F5, F10, F11, Shift+F11, Shift+F5, F9
-- [ ] No crashes over 3 consecutive full demo runs
-- [ ] Backup screen recording recorded
+- [ ] No crashes over three consecutive full demo runs
+
+---
+
+## Troubleshooting
+
+**`pnpm dev` fails with "Cannot find module 'electron'"**  
+Run `pnpm install` again. If it persists, delete `node_modules` and reinstall.
+
+**GDB not found**  
+Install GDB for your platform: `sudo apt install gdb` (Debian/Ubuntu), `brew install gdb` (macOS with Homebrew), or `winget install GnuWin32.GDB` (Windows).
+
+**AI features return no response**  
+Check that `DEE_BUGR_GROQ_KEY` is set correctly in `.env` and that the key is valid at [console.groq.com](https://console.groq.com).
+
+**Java adapter fails to launch**  
+Verify your `JAVA_DEBUG_JAR` path points to the `.jar` file, not the directory. The filename should match `com.microsoft.java.debug.plugin-*.jar`.
+
+**Build fails on macOS with code signing errors**  
+For local development builds, you can skip signing by setting `CSC_IDENTITY_AUTO_DISCOVERY=false` before running `pnpm build`.
