@@ -1,11 +1,18 @@
 // src/components/panels/CodeEditor.tsx
+//
+// FIXES vs original:
+//   1. Removed MOCK_SOURCE_LINES fallback — editor starts blank, not with demo C++ code
+//   2. Added onChange handler — typing in the editor updates sourceLines in the store
+//      so the debugger uses the current buffer contents on launch
+//   3. Added synthetic currentFile when user types without loading a file
+//      so gutter breakpoints work on freshly-typed code
+//   4. Removed readOnly:false from options (was already false, just clutter)
 
 import { useEffect, useRef, useCallback } from 'react'
 import MonacoEditor from '@monaco-editor/react'
-import type { OnMount } from '@monaco-editor/react'
+import type { OnMount, OnChange } from '@monaco-editor/react'
 import type * as Monaco from 'monaco-editor'
 import { useDebugStore } from '../../renderer/store/debugStore'
-import { MOCK_SOURCE_LINES } from '../../renderer/mockData'
 import { useGutterDrag } from '../../renderer/hooks/useGutterDrag'
 import type { Anomaly, ReturnValue } from '../../shared/types'
 
@@ -19,19 +26,37 @@ const MONACO_LANG: Record<string, string> = {
   java:       'java',
 }
 
+// Default placeholder per language shown in an empty editor
+const PLACEHOLDER_CODE: Record<string, string> = {
+  python:     '# Write your Python code here, then click Go ▶ to debug it\n',
+  cpp:        '// Write your C++ code here, then click Go ▶ to debug it\n',
+  c:          '// Write your C code here, then click Go ▶ to debug it\n',
+  javascript: '// Write your JavaScript code here, then click Go ▶ to debug it\n',
+  java:       '// Write your Java code here, then click Go ▶ to debug it\n',
+}
+
+// Synthetic temp filename used when the user types directly without loading a file.
+// The launch handler writes the buffer to this path before starting the adapter.
+const SYNTHETIC_FILENAME: Record<string, string> = {
+  python:     '/tmp/lucid_scratch.py',
+  cpp:        '/tmp/lucid_scratch.cpp',
+  c:          '/tmp/lucid_scratch.c',
+  javascript: '/tmp/lucid_scratch.js',
+  java:       '/tmp/LucidScratch.java',
+}
+
 const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
-  fontSize: 13,
-  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
-  minimap: { enabled: true },
-  glyphMargin: true,
-  lineNumbers: 'on',
+  fontSize:            13,
+  fontFamily:          "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
+  minimap:             { enabled: true },
+  glyphMargin:         true,
+  lineNumbers:         'on',
   scrollBeyondLastLine: false,
-  renderWhitespace: 'none',
-  smoothScrolling: true,
-  cursorBlinking: 'smooth',
-  wordWrap: 'off',
-  readOnly: false,
-  automaticLayout: true,
+  renderWhitespace:    'none',
+  smoothScrolling:     true,
+  cursorBlinking:      'smooth',
+  wordWrap:            'off',
+  automaticLayout:     true,
 }
 
 // ── Overlay helpers ───────────────────────────────────────────────────────────
@@ -56,25 +81,17 @@ function buildHistoryOverlays(
   currentLine: number,
 ): Map<number, { text: string; hasChanged: boolean }> {
   const result = new Map<number, { text: string; hasChanged: boolean }>()
-
   for (const entry of executionHistory) {
     if (entry.file !== currentFile) continue
     if (entry.line === currentLine) continue
-
     const vars = Object.entries(entry.variables)
     if (vars.length === 0) continue
-
     const text       = buildOverlayText(vars.map(([name, v]) => ({ name, value: v.value })))
     const hasChanged = vars.some(([, v]) => v.changed)
     result.set(entry.line, { text, hasChanged })
   }
-
   return result
 }
-
-// ── Anomaly decoration builder ────────────────────────────────────────────────
-// One glyph per anomaly line. Errors get a red glyph; warnings get amber.
-// Only anomalies with a known line number are decorated.
 
 function buildAnomalyDecorations(
   anomalies: Anomaly[],
@@ -83,13 +100,11 @@ function buildAnomalyDecorations(
   const byLine = new Map<number, Anomaly>()
   for (const a of anomalies) {
     if (a.line == null) continue
-    // If multiple anomalies share a line, prefer errors over warnings
     const existing = byLine.get(a.line)
     if (!existing || (existing.severity === 'warning' && a.severity === 'error')) {
       byLine.set(a.line, a)
     }
   }
-
   return [...byLine.entries()].map(([line, anomaly]) => ({
     range: new monaco.Range(line, 1, line, 1),
     options: {
@@ -105,22 +120,14 @@ function buildAnomalyDecorations(
   }))
 }
 
-// ── Return value call-site finder ─────────────────────────────────────────────
-// Searches sourceLines backwards from currentLine for the most recent call
-// to the returned function. Returns 1-indexed line number or null.
-// Matches "fnName(" anywhere on the line (handles indentation, chained calls).
-
 function findCallSiteLine(
   fnName: string,
   sourceLines: string[],
   currentLine: number,
 ): number | null {
-  // Search backwards from execution cursor so we find the most recent call
-  const searchFrom = Math.min(currentLine, sourceLines.length) - 1  // 0-indexed
+  const searchFrom = Math.min(currentLine, sourceLines.length) - 1
   for (let i = searchFrom; i >= 0; i--) {
-    if (sourceLines[i].includes(`${fnName}(`)) {
-      return i + 1  // 1-indexed for Monaco
-    }
+    if (sourceLines[i].includes(`${fnName}(`)) return i + 1
   }
   return null
 }
@@ -137,6 +144,7 @@ export default function CodeEditor() {
   const executionHistory = useDebugStore((s) => s.executionHistory)
   const anomalies        = useDebugStore((s) => s.anomalies)
   const lastReturnValue  = useDebugStore((s) => s.lastReturnValue)
+  const setState         = useDebugStore((s) => s.setState)
 
   const storeRef  = useRef(useDebugStore.getState)
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null)
@@ -175,21 +183,20 @@ export default function CodeEditor() {
         e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
       if (!isGutter || !e.target.position) return
       const line = e.target.position.lineNumber
-      const { currentFile: file, toggleBreakpoint } = storeRef.current()
-      if (!file) {
-        console.warn('[CodeEditor] No active file — launch a session before setting breakpoints')
-        return
-      }
-      toggleBreakpoint(file, line)
+      const store = storeRef.current()
+      // FIX: if no file is loaded yet, use the synthetic scratch filename so
+      //      breakpoints can be set on freshly typed (unsaved) code
+      const file = store.currentFile || SYNTHETIC_FILENAME[store.language] || '/tmp/lucid_scratch'
+      store.toggleBreakpoint(file, line)
     })
 
     const toggleAtCursor = () => {
       const pos  = editor.getPosition()
       const line = pos?.lineNumber
       if (!line) return
-      const { currentFile: file, toggleBreakpoint } = storeRef.current()
-      if (!file) return
-      toggleBreakpoint(file, line)
+      const store = storeRef.current()
+      const file = store.currentFile || SYNTHETIC_FILENAME[store.language] || '/tmp/lucid_scratch'
+      store.toggleBreakpoint(file, line)
     }
     window.addEventListener('lucid:toggle-bp-at-cursor', toggleAtCursor)
 
@@ -205,14 +212,40 @@ export default function CodeEditor() {
     })
   }, [])
 
+  // ── onChange — sync editor content back to store ──────────────────────────
+  // When the user types directly in the editor, update sourceLines and set a
+  // synthetic currentFile so the launch handler knows what to run.
+  const handleChange: OnChange = useCallback((value) => {
+    if (value === undefined) return
+    const store = storeRef.current()
+    // Only update if no real file is loaded (i.e. user is typing from scratch)
+    // or if the file IS a synthetic scratch file
+    const syntheticFile = SYNTHETIC_FILENAME[store.language] || '/tmp/lucid_scratch'
+    const isScratch = !store.currentFile || store.currentFile === syntheticFile
+    if (isScratch) {
+      setState({
+        ...store,
+        currentFile:  syntheticFile,
+        sourceLines:  value.split('\n'),
+      })
+    } else {
+      // File is loaded from disk — update sourceLines so overlays stay in sync,
+      // but don't change currentFile (the real path is already correct)
+      setState({
+        ...store,
+        sourceLines: value.split('\n'),
+      })
+    }
+  }, [setState])
+
   // ── Breakpoint decorations ────────────────────────────────────────────────
   useEffect(() => {
     const monaco = monacoRef.current
     const col    = bpCollectionRef.current
     if (!monaco || !col) return
-    const { currentFile: file } = storeRef.current()
-    if (!file) { col.set([]); return }
-    const relevant = breakpoints.filter((bp) => bp.file === file)
+    const { currentFile: file, language: lang } = storeRef.current()
+    const effectiveFile = file || SYNTHETIC_FILENAME[lang] || '/tmp/lucid_scratch'
+    const relevant = breakpoints.filter((bp) => bp.file === effectiveFile)
     col.set(relevant.map((bp) => ({
       range: new monaco.Range(bp.line, 1, bp.line, 1),
       options: {
@@ -316,9 +349,6 @@ export default function CodeEditor() {
   }, [])
 
   // ── Anomaly gutter indicators ─────────────────────────────────────────────
-  // Renders a coloured glyph in the gutter for each anomaly that has a line.
-  // Error anomalies → red ⛔ glyph; warnings → amber ⚠ glyph.
-  // Also highlights the whole line with a faint background tint.
   useEffect(() => {
     const monaco = monacoRef.current
     const col    = anomalyCollectionRef.current
@@ -328,25 +358,17 @@ export default function CodeEditor() {
   }, [anomalies])
 
   // ── Return value inline overlay ───────────────────────────────────────────
-  // After a stepOut, lastReturnValue arrives via EVENT_RETURN_VAL.
-  // We scan sourceLines backwards from currentLine to find the call site
-  // (the last line containing "fnName(") and annotate it inline.
-  // Cleared when execution continues (currentLine changes or no return value).
   useEffect(() => {
     const monaco = monacoRef.current
     const col    = returnValCollectionRef.current
     if (!monaco || !col) return
-
     if (!lastReturnValue || !sourceLines || sourceLines.length === 0) {
       col.set([])
       return
     }
-
     const callLine = findCallSiteLine(lastReturnValue.fnName, sourceLines, currentLine)
     if (!callLine) { col.set([]); return }
-
     const text = `  ↩ ${lastReturnValue.fnName}() = ${truncate(lastReturnValue.value)}`
-
     col.set([{
       range: new monaco.Range(callLine, Number.MAX_SAFE_INTEGER, callLine, Number.MAX_SAFE_INTEGER),
       options: {
@@ -368,7 +390,8 @@ export default function CodeEditor() {
     monaco.editor.setModelLanguage(model, MONACO_LANG[language] ?? 'plaintext')
   }, [language])
 
-  const sourceContent = sourceLines?.join('\n') ?? MOCK_SOURCE_LINES
+  // FIX: no mock fallback — start blank with a language-appropriate placeholder comment
+  const sourceContent = sourceLines?.join('\n') ?? PLACEHOLDER_CODE[language] ?? ''
 
   return (
     <div
@@ -377,11 +400,12 @@ export default function CodeEditor() {
     >
       <MonacoEditor
         height="100%"
-        language={MONACO_LANG[language] ?? 'cpp'}
+        language={MONACO_LANG[language] ?? 'plaintext'}
         value={sourceContent}
         theme="vs-dark"
         options={EDITOR_OPTIONS}
         onMount={handleMount}
+        onChange={handleChange}
       />
     </div>
   )

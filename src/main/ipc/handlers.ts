@@ -311,5 +311,11 @@ export function registerAllHandlers() {
     return fs.readFile(path, 'utf-8')
   })
 
+  ipcMain.handle(IPC.WRITE_FILE, async (_, args: { path: string; content: string }) => {
+    const fs = await import('node:fs/promises')
+    await fs.writeFile(args.path, args.content, 'utf-8')
+    return { success: true }
+  })
+
   console.log('[IPC] All handlers registered')
 }

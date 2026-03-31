@@ -13,6 +13,7 @@ export const IPC = {
   // with that file pre-loaded.
   OPEN_FILE_DIALOG:   'app:openFileDialog',
   READ_FILE:          'app:readFile',
+  WRITE_FILE:         'app:writeFile',   // writes buffer to disk before launch (scratch files)
 
   // ── STEPPING ──────────────────────────────────────────────
   CONTINUE:           'dap:continue',

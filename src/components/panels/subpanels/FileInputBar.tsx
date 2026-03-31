@@ -78,16 +78,27 @@ export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
     }
   }, [value, setState])
 
-  // "Go" / Enter — load file then launch debugger
+  // "Go" / Enter — write buffer to disk if scratch, then launch debugger
   const handleLaunch = useCallback(async () => {
     const filePath = value.trim()
     if (!filePath || launching) return
     setLaunching(true)
     // Also load the file into the editor so Monaco shows the source immediately
     const content = await invoke(IPC.READ_FILE as AnyChannel, filePath)
+      .catch(() => null)  // file may not exist yet if it's a scratch path
     if (typeof content === 'string') {
       const prev = useDebugStore.getState()
       setState({ ...prev, currentFile: filePath, sourceLines: content.split('\n') })
+    } else {
+      // File doesn't exist — could be a scratch file. Write whatever is in
+      // the store's sourceLines to disk so the adapter can read it.
+      const storeState = useDebugStore.getState()
+      if (storeState.sourceLines && storeState.sourceLines.length > 0) {
+        await invoke(IPC.WRITE_FILE as AnyChannel, {
+          path:    filePath,
+          content: storeState.sourceLines.join('\n'),
+        }).catch((e: unknown) => console.error('[FileInputBar] Failed to write scratch file', e))
+      }
     }
     onLaunch(filePath)
   }, [value, launching, onLaunch, setState])
