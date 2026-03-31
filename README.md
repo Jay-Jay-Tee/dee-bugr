@@ -186,7 +186,7 @@ Apache 2.0 — see [LICENSE](./LICENSE)
 
 ## AI Assistance Disclosure
 
-Parts of this project were developed with the assistance of Large Language Models (LLMs), including ChatGPT.
+Parts of this project were developed with the assistance of Large Language Models (LLMs), including ChatGPT, Cursor, and Claude.
 
 The LLM was used primarily as a development aid for:
 - Generating and refining code snippets
