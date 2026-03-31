@@ -37,6 +37,8 @@ export function registerAllHandlers() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error('[IPC] Launch failed:', msg)
+      // Reset renderer status so the launch button re-enables
+      session.resetToIdle(msg)
       return { success: false, error: msg }
     }
   })

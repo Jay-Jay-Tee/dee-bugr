@@ -4,10 +4,11 @@
   display: flex;
   flex-direction: column;
   width: 100%;
+  height: 100%;          /* fill the wrapper div that BottomPanel provides */
   background: #17132a;
   border: 1px solid rgba(255,255,255,0.07);
-  border-radius: 12px;
-  overflow: hidden;
+  border-radius: 0;      /* no rounding when filling a panel slot */
+  overflow: hidden;      /* clip children — chart and table stay inside */
   font-family: 'Syne', sans-serif;
 }
 
@@ -68,7 +69,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  padding: 12px 6px;
+  padding: 6px 6px;      /* tighter padding so stats row stays compact */
   gap: 2px;
   border-right: 1px solid rgba(255,255,255,0.07);
 }
@@ -94,13 +95,14 @@
 
 /* ── Chart ───────────────────────────────────────────────────────────────── */
 .vhp-chart-wrap {
-  padding: 16px 18px 10px;
-  height: 200px;
+  padding: 8px 12px 6px;
+  height: 110px;         /* compact enough to leave room for the table in 180px panel */
   position: relative;
   border-bottom: 1px solid rgba(255,255,255,0.07);
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;        /* chart never shrinks — table does */
 }
 .vhp-chart-wrap canvas {
   flex: 1;
@@ -126,7 +128,8 @@
 /* ── Table ───────────────────────────────────────────────────────────────── */
 .vhp-table-wrap {
   overflow-y: auto;
-  max-height: 200px;
+  flex: 1;               /* take remaining space after chart + stats + header */
+  min-height: 0;         /* allow flex child to shrink below content size */
 }
 .vhp-table-wrap::-webkit-scrollbar       { width: 3px; }
 .vhp-table-wrap::-webkit-scrollbar-track { background: transparent; }

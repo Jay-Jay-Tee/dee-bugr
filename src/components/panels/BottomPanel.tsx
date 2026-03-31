@@ -189,7 +189,7 @@ export default function BottomPanel() {
     <div className="h-full w-full flex flex-col bg-[#1e1e1e] border-t border-[#3c3c3c]">
       <TabBar active={tab} onChange={setTab} />
       {tab === 'console' && <ConsoleTab />}
-      {tab === 'history' && <VariableHistoryPanel />}
+      {tab === 'history' && <div className="flex-1 overflow-hidden min-h-0"><VariableHistoryPanel /></div>}
       {tab === 'memory' && <MemoryPanel />}
       {tab === 'cinema' && <DebugCinema />}
     </div>
