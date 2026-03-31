@@ -75,12 +75,33 @@ pnpm setup:auto
 
 ```
 
+`pnpm setup:auto` will check for `gcc`, `g++`, and `gdb` and tell the user if anything is missing.
+If the toolchain is missing, install it manually (admin/system-level step):
+
+```bash
+# Ubuntu / Debian
+sudo apt install build-essential gdb
+
+# macOS (Homebrew)
+brew install gcc gdb
+
+# Windows (example)
+# Install MSYS2/MinGW-w64 and ensure gcc, g++, gdb are on PATH
+```
+
 ### Configure AI
+
+`DEE_BUGR_GROQ_KEY` is required for AI features (Explain Bug, Suggest Fix, Narrative, AI breakpoint suggestions).
+Without it, debugging still works, but AI actions will fail.
 
 ```bash
 cp .env.example .env
-# Add your Groq API key to .env:
-# DEE_BUGR_GROQ_KEY=your_key_here
+
+# Required for AI features
+DEE_BUGR_GROQ_KEY=gsk_your_key_here
+
+# Optional: use local Ollama instead of Groq
+# DEE_BUGR_AI_MODE=local
 ```
 
 ### Run in development
