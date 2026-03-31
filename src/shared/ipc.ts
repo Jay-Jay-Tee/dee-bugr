@@ -12,6 +12,7 @@ export const IPC = {
   // openNewWindow: true → also tells the main process to spawn a second window
   // with that file pre-loaded.
   OPEN_FILE_DIALOG:   'app:openFileDialog',
+  APP_RELAUNCH:       'app:relaunch',
   READ_FILE:          'app:readFile',
   WRITE_FILE:         'app:writeFile',   // writes buffer to disk before launch (scratch files)
 

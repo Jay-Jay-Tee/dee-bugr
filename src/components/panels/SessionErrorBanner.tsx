@@ -33,12 +33,13 @@ export default function SessionErrorBanner() {
   }, [status])
 
   const handleRelaunch = useCallback(async () => {
-    if (!currentFile) return
     setRelaunching(true)
-    await invoke(IPC.LAUNCH, { language, target: currentFile })
+    await invoke(IPC.APP_RELAUNCH)
+    // App exits immediately after relaunch request; this fallback only runs
+    // if restart is blocked for some reason.
     setRelaunching(false)
     setDismissed(true)
-  }, [language, currentFile])
+  }, [])
 
   const handleDismiss = useCallback(() => {
     setDismissed(true)
@@ -63,7 +64,7 @@ export default function SessionErrorBanner() {
             disabled={relaunching}
             className="text-[11px] px-2.5 py-1 rounded bg-red-800 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           >
-            {relaunching ? 'Launching…' : '↺ Relaunch'}
+            {relaunching ? 'Restarting…' : '↺ Relaunch'}
           </button>
         )}
         <button

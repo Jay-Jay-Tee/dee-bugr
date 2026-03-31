@@ -23,6 +23,9 @@ This guide covers everything needed to get DEE-bugr running locally, configure l
 git clone https://github.com/your-org/dee-bugr.git
 cd dee-bugr
 pnpm install
+
+# Optional but recommended: auto-bootstrap local debugger setup
+pnpm setup:auto
 ```
 
 ---
