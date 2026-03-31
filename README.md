@@ -2,7 +2,7 @@
 
 > The open source debugger that explains itself.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-teal.svg)](LICENSE)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-teal.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-blue.svg)](https://github.com/your-org/dee-bugr)
 [![Languages](https://img.shields.io/badge/languages-Python%20%7C%20C%2FC%2B%2B%20%7C%20JavaScript%20%7C%20Java-orange.svg)](https://github.com/your-org/dee-bugr)
 [![Built with Electron](https://img.shields.io/badge/built%20with-Electron%20%2B%20React-purple.svg)](https://www.electronjs.org)
@@ -180,7 +180,7 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a pull request. 
 
 ## License
 
-MIT — see [LICENSE](./LICENSE)
+Apache 2.0 — see [LICENSE](./LICENSE)
 
 ---
 
