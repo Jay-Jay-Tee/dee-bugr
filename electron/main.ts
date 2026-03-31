@@ -3,11 +3,9 @@
 import 'dotenv/config'
 
 import { app, BrowserWindow, Menu, dialog, ipcMain } from 'electron'
-import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 
-const require = createRequire(import.meta.url)
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 process.env.APP_ROOT = path.join(__dirname, '..')
@@ -21,6 +19,27 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST
 
 let win: BrowserWindow | null
+
+function isRecoverableTransportError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /ECONNRESET|EPIPE|socket hang up/i.test(msg)
+}
+
+process.on('uncaughtException', (err) => {
+  if (isRecoverableTransportError(err)) {
+    console.warn('[Main] Suppressed recoverable transport error:', err instanceof Error ? err.message : String(err))
+    return
+  }
+  console.error('[Main] Uncaught exception:', err)
+})
+
+process.on('unhandledRejection', (reason) => {
+  if (isRecoverableTransportError(reason)) {
+    console.warn('[Main] Suppressed recoverable transport rejection:', reason instanceof Error ? reason.message : String(reason))
+    return
+  }
+  console.error('[Main] Unhandled rejection:', reason)
+})
 
 // ── Window factory ────────────────────────────────────────────────────────────
 
@@ -172,6 +191,12 @@ function buildMenu() {
 // Returns the chosen path string, or null if cancelled.
 
 function registerFileDialogHandler() {
+  ipcMain.handle('app:relaunch', async () => {
+    app.relaunch()
+    app.exit(0)
+    return { success: true }
+  })
+
   ipcMain.handle('app:openFileDialog', async (event, args?: { openInNewWindow?: boolean }) => {
     const senderWin = BrowserWindow.fromWebContents(event.sender)
     if (!senderWin) return { canceled: true, filePath: null }

@@ -151,6 +151,26 @@ export class SessionManager {
     this.client.on('event:output',     this.handleOutput.bind(this))
     this.client.on('event:terminated', this.handleTerminated.bind(this))
     this.client.on('event:exited',     this.handleExited.bind(this))
+    this.client.on('error',            this.handleClientError.bind(this))
+    this.client.on('close',            this.handleClientClose.bind(this))
+  }
+
+  private handleClientError(err: Error) {
+    const msg = err?.message || String(err)
+    console.warn('[Session] DAP transport error:', msg)
+    if (this.state.status === 'terminated') return
+
+    this.state.status = 'terminated'
+    this.state.errorMessage = msg
+    this.pushToRenderer(IPC.EVENT_TERMINATED, null)
+  }
+
+  private handleClientClose() {
+    if (this.state.status === 'terminated') return
+    // Close without explicit terminate usually means adapter died/crashed.
+    this.state.status = 'terminated'
+    this.state.errorMessage = this.state.errorMessage || 'Debugger connection closed unexpectedly.'
+    this.pushToRenderer(IPC.EVENT_TERMINATED, null)
   }
 
   private async handleStopped(body: DAPRecord) {

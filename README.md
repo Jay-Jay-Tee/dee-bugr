@@ -71,6 +71,8 @@ See [SETUP.md](./SETUP.md) for full installation and adapter configuration detai
 git clone https://github.com/your-org/dee-bugr.git
 cd dee-bugr
 pnpm install
+pnpm setup:auto
+
 ```
 
 ### Configure AI
