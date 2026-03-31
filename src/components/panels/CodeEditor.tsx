@@ -33,30 +33,35 @@ function getPlaceholderInstructions(language: string): string {
     python: [
       '# 1. Type in your absolute path in the box to the left of Open',
       '# or open it through the File > Open File option',
+      '# or open it through the folder button (Ctrl+O) on the top right',
       '# 2. Set breakpoints by clicking in the left gutter',
       '# 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     cpp: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
+      '// or open it through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     c: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
+      '// or open it through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     javascript: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
+      '// or open it through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
     java: [
       '// 1. Type in your absolute path in the box to the left of Open',
       '// or open it through the File > Open File option',
+      '// or open it through the folder button (Ctrl+O) on the top right',
       '// 2. Set breakpoints by clicking in the left gutter',
       '// 3. Click Go ▶ to start debugging',
     ].join('\n') + '\n',
@@ -79,6 +84,7 @@ const EDITOR_OPTIONS: Monaco.editor.IStandaloneEditorConstructionOptions = {
   fontFamily:          "'JetBrains Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace",
   minimap:             { enabled: true },
   glyphMargin:         true,
+  lineDecorationsWidth: 16,
   lineNumbers:         'on',
   scrollBeyondLastLine: false,
   readOnly:           true,
@@ -189,6 +195,7 @@ export default function CodeEditor() {
   const anomalyCollectionRef   = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const returnValCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
   const gutterHoverCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
+  const gutterGuideCollectionRef = useRef<Monaco.editor.IEditorDecorationsCollection | null>(null)
 
   // ── Mount ─────────────────────────────────────────────────────────────────
   const handleMount: OnMount = useCallback((editor, monaco) => {
@@ -202,6 +209,7 @@ export default function CodeEditor() {
     anomalyCollectionRef.current   = editor.createDecorationsCollection([])
     returnValCollectionRef.current = editor.createDecorationsCollection([])
     gutterHoverCollectionRef.current = editor.createDecorationsCollection([])
+    gutterGuideCollectionRef.current = editor.createDecorationsCollection([])
 
     editor.onDidChangeCursorPosition((e) => {
       globalThis.dispatchEvent(
@@ -411,6 +419,33 @@ export default function CodeEditor() {
       },
     }])
   }, [lastReturnValue, sourceLines, currentLine])
+
+  // ── Permanent gutter guide (yellow) ───────────────────────────────────────
+  useEffect(() => {
+    const monaco = monacoRef.current
+    const col    = gutterGuideCollectionRef.current
+    const editor = editorRef.current
+    if (!monaco || !col || !editor) return
+    const model = editor.getModel()
+    if (!model) return
+
+    const lineCount = model.getLineCount()
+    const decorations = []
+    for (let line = 1; line <= lineCount; line++) {
+      decorations.push({
+        range: new monaco.Range(line, 1, line, 1),
+        options: {
+          isWholeLine: false,
+          lineDecorationsClassName: 'lucid-gutter-guide',
+        },
+      })
+    }
+    col.set(decorations)
+
+    return () => {
+      col.set([])
+    }
+  }, [sourceLines])
 
   // ── Gutter hover indicator ────────────────────────────────────────────────
   useEffect(() => {

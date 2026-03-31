@@ -76,7 +76,7 @@ button:focus-visible {
   width: 12px !important;
   height: 12px !important;
   margin-top: 3px;
-  margin-left: 3px;
+  margin-left: 10px;
 }
 
 /* ── CodeEditor: execution cursor line ───────────────────────────────────── */
@@ -131,7 +131,7 @@ button:focus-visible {
   width: 10px !important;
   height: 10px !important;
   margin-top: 4px;
-  margin-left: 4px;
+  margin-left: 11px;
   border: 1px dashed #75beff;
 }
 
@@ -204,5 +204,24 @@ button:focus-visible {
   font-size: 18px;
   display: block;
   line-height: 20px;
-  margin-left: 3px;
+  margin-left: 10px;
+}
+
+/* ── CodeEditor: permanent gutter guide (yellow) ────────────────────────── */
+.lucid-gutter-guide {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.lucid-gutter-guide::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: 2px;
+  background: #ffcc00;
+  opacity: 0.95;
 }

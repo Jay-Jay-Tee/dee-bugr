@@ -11,6 +11,7 @@
 
 import { BrowserWindow } from 'electron'
 import * as fs from 'fs'
+import * as path from 'path'
 import { DAPClient } from '../dap/DAPClient'
 import { BreakpointManager } from '../dap/BreakpointManager'
 import { launchPythonAdapter } from '../dap/adapters/python'
@@ -28,11 +29,10 @@ import {
   Scope,
   HistoryEntry,
   Language,
-  Breakpoint,
   AsmLine,
   Anomaly,
 } from '../../shared/types'
-import { ChildProcess } from 'child_process'
+import { ChildProcess, spawn } from 'child_process'
 
 // ── Type helpers ──────────────────────────────────────────────────────────────
 
@@ -275,6 +275,62 @@ export class SessionManager {
     return port
   }
 
+  private async buildNativeTargetIfNeeded(language: Language, scriptPath: string): Promise<string> {
+    if (language !== 'c' && language !== 'cpp') return scriptPath
+
+    const ext = path.extname(scriptPath).toLowerCase()
+    const isSource = ext === '.c' || ext === '.cpp' || ext === '.cc' || ext === '.cxx'
+    if (!isSource) return scriptPath
+
+    const outDir = path.join(path.dirname(scriptPath), '.lucid-build')
+    fs.mkdirSync(outDir, { recursive: true })
+
+    const base = path.basename(scriptPath, path.extname(scriptPath))
+    const outputPath = path.join(outDir, process.platform === 'win32' ? `${base}.exe` : base)
+    const compiler = language === 'c' ? 'gcc' : 'g++'
+    const args = ['-g', '-O0', '-o', outputPath, scriptPath]
+
+    console.log(`[Session] Compiling ${scriptPath} -> ${outputPath}`)
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(compiler, args, { cwd: path.dirname(scriptPath) })
+      let stderr = ''
+
+      child.stdout?.on('data', (d: Buffer) => {
+        this.pushToRenderer(IPC.EVENT_OUTPUT, {
+          text: d.toString(),
+          category: 'stdout',
+        })
+      })
+
+      child.stderr?.on('data', (d: Buffer) => {
+        const msg = d.toString()
+        stderr += msg
+        this.pushToRenderer(IPC.EVENT_OUTPUT, {
+          text: msg,
+          category: 'stderr',
+        })
+      })
+
+      child.on('error', (err) => {
+        if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+          reject(new Error(`C/C++ compiler '${compiler}' not found in PATH. Install MinGW-w64/MSYS2 or set PATH correctly.`))
+          return
+        }
+        reject(err)
+      })
+
+      child.on('exit', (code) => {
+        if (code === 0 && fs.existsSync(outputPath)) {
+          resolve()
+          return
+        }
+        reject(new Error(`Compilation failed (exit ${code ?? 'unknown'}). ${stderr.trim() || 'No compiler error output.'}`))
+      })
+    })
+
+    return outputPath
+  }
+
   private async connectToAdapter(port: number): Promise<void> {
     // BUG FIX 3: Use retry loop instead of hardcoded sleep(1500).
     // On slow machines sleep(1500) causes connection timeout.
@@ -298,7 +354,7 @@ export class SessionManager {
     console.log('[Session] DAPClient connected')
   }
 
-  private async configureDebugger(language: Language, scriptPath: string, port: number): Promise<void> {
+  private async configureDebugger(language: Language, debugTargetPath: string, port: number, sourcePath?: string): Promise<void> {
     // FIX 1: pass the correct adapterID for the language
     const initBody = await this.client.initialize(ADAPTER_IDS[language])
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
@@ -306,9 +362,9 @@ export class SessionManager {
     if (language === 'python') {
       await this.attachPythonDebugger(port)
     } else if (language === 'javascript') {
-      await this.client.launch({ program: scriptPath, stopOnEntry: false })
+      await this.client.launch({ program: debugTargetPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {
-      await this.client.request('launch', buildCppLaunchArgs(scriptPath))
+      await this.client.request('launch', buildCppLaunchArgs(debugTargetPath, sourcePath ?? debugTargetPath))
     } else if (language === 'java') {
       await this.client.request('attach', buildJavaAttachArgs(5005))
     }
@@ -351,9 +407,11 @@ export class SessionManager {
     // FIX 6: save for restart
     this.lastLaunchArgs = { language, target: scriptPath, breakpoints: breakpointLines }
 
-    const port = await this.launchAdapterForLanguage(language, scriptPath)
+    const debugTargetPath = await this.buildNativeTargetIfNeeded(language, scriptPath)
+
+    const port = await this.launchAdapterForLanguage(language, debugTargetPath)
     await this.connectToAdapter(port)
-    await this.configureDebugger(language, scriptPath, port)
+    await this.configureDebugger(language, debugTargetPath, port, scriptPath)
 
     for (const line of breakpointLines) {
       await this.bpManager.set({ file: scriptPath, line })

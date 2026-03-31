@@ -20,6 +20,11 @@ const ACCENT_DIM  = 'rgba(124,106,247,0.12)'
 const GRID        = 'rgba(255,255,255,0.06)'
 const TICK        = 'rgba(255,255,255,0.35)'
 
+function toFiniteNumber(value: string): number | null {
+  const n = Number.parseFloat(value)
+  return Number.isFinite(n) ? n : null
+}
+
 interface VariableChartProps {
   entries: FlatEntry[]
   variableName: string
@@ -45,11 +50,13 @@ export default function VariableChart({ entries, variableName }: VariableChartPr
         padding: 10,
         callbacks: {
           title: (items: TooltipItem<'line'>[]) => {
+            if (!items.length) return 'Step'
             const e = ents[items[0].dataIndex]
             return `Step ${e.step}  ·  Line ${e.line}`
           },
           label: (item: TooltipItem<'line'>) => {
             const e = ents[item.dataIndex]
+            if (!e) return ''
             const changed = e.changed ? '  ← changed' : ''
             return ` ${varName} = ${e.value}  (${e.type})${changed}`
           },
@@ -72,16 +79,22 @@ export default function VariableChart({ entries, variableName }: VariableChartPr
 
   // Create chart once on mount; update it on data changes; destroy on unmount only.
   useEffect(() => {
-    if (!canvasRef.current) return
+    const canvas = canvasRef.current
+    if (!canvas) return
+
+    // Guard against HMR/StrictMode remount races: Chart.js tracks charts globally by canvas.
+    // If a previous instance is still registered, destroy it before creating a new one.
+    Chart.getChart(canvas)?.destroy()
+
     // Destroy any pre-existing chart on this canvas before creating (safety for StrictMode double-mount)
     chartRef.current?.destroy()
-    chartRef.current = new Chart(canvasRef.current, {
+    chartRef.current = new Chart(canvas, {
       type: 'line',
       data: {
         labels:   entries.map((e) => `s${e.step}`),
         datasets: [{
           label:               variableName,
-          data:                entries.map((e) => parseFloat(e.value)),
+          data:                entries.map((e) => toFiniteNumber(e.value)),
           borderColor:         ACCENT,
           borderWidth:         2,
           pointBackgroundColor: entries.map((e) => e.changed ? ACCENT_CHANGED : ACCENT),
@@ -96,6 +109,7 @@ export default function VariableChart({ entries, variableName }: VariableChartPr
     })
     return () => {
       chartRef.current?.destroy()
+      Chart.getChart(canvas)?.destroy()
       chartRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -107,7 +121,7 @@ export default function VariableChart({ entries, variableName }: VariableChartPr
     if (!chart) return
     const ds = chart.data.datasets[0]
     chart.data.labels          = entries.map((e) => `s${e.step}`)
-    ds.data                    = entries.map((e) => parseFloat(e.value))
+    ds.data                    = entries.map((e) => toFiniteNumber(e.value))
     ds.label                   = variableName
     ;(ds as any).pointBackgroundColor = entries.map((e) => e.changed ? ACCENT_CHANGED : ACCENT)
     chart.options              = buildOptions(entries, variableName)

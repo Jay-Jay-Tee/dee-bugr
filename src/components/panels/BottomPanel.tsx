@@ -7,11 +7,38 @@
 //   3. Removed unused imports (useMemo, MemoryAddressInput, BYTES_PER_ROW)
 //   4. ConsoleTab auto-clears on new session
 
-import { useEffect, useRef, useState } from 'react'
+import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from 'react'
 import { useDebugStore } from '../../renderer/store/debugStore'
 import DebugCinema from './subpanels/DebugCinema'
 import VariableHistoryPanel from './subpanels/VariableHistoryPanel/index'
 import MemoryPanel from './subpanels/MemoryPanel'
+
+class HistoryErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; message: string }> {
+  constructor(props: { children: ReactNode }) {
+    super(props)
+    this.state = { hasError: false, message: '' }
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, message: error.message || 'Unknown history panel error' }
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('[History] Render error:', error, info)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex-1 overflow-auto p-3 text-xs text-yellow-300 bg-[#1e1e1e]">
+          History panel hit a rendering error and was safely recovered.
+          <div className="mt-1 text-[#cccccc]">{this.state.message}</div>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 // ── Tab bar ───────────────────────────────────────────────────────────────────
 
@@ -112,7 +139,7 @@ export default function BottomPanel() {
       <TabBar active={tab} onChange={setTab} />
       {tab === 'console' && <ConsoleTab />}
       {/* FIX: flex flex-col required so VariableHistoryPanel's height:100% resolves */}
-      {tab === 'history' && <div className="flex flex-col flex-1 overflow-hidden min-h-0"><VariableHistoryPanel /></div>}
+      {tab === 'history' && <div className="flex flex-col flex-1 overflow-hidden min-h-0"><HistoryErrorBoundary><VariableHistoryPanel /></HistoryErrorBoundary></div>}
       {tab === 'memory'  && <MemoryPanel />}
       {tab === 'cinema'  && <DebugCinema />}
     </div>

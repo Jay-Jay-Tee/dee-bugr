@@ -27,6 +27,10 @@ export interface LaunchedAdapter {
 }
 
 function findCppToolsAdapter(): string | null {
+  const candidates = process.platform === 'win32'
+    ? ['OpenDebugAD7.exe', 'OpenDebugAD7']
+    : ['OpenDebugAD7']
+
   // 1. Explicit env override
   if (process.env.CPPTOOLS_ADAPTER_PATH) {
     const p = process.env.CPPTOOLS_ADAPTER_PATH
@@ -35,18 +39,29 @@ function findCppToolsAdapter(): string | null {
   }
 
   // 2. Next to project root
-  const root = path.join(process.cwd(), 'cpptools', 'OpenDebugAD7')
-  if (fs.existsSync(root)) return root
+  for (const bin of candidates) {
+    const root = path.join(process.cwd(), 'cpptools', bin)
+    if (fs.existsSync(root)) return root
+  }
 
   // 3. Common VS Code extension installs
   const home = process.env.HOME ?? process.env.USERPROFILE ?? ''
-  const vscodeExts = path.join(home, '.vscode', 'extensions')
-  if (fs.existsSync(vscodeExts)) {
-    const dirs = fs.readdirSync(vscodeExts).filter(d => d.startsWith('ms-vscode.cpptools-'))
-    if (dirs.length > 0) {
-      dirs.sort().reverse() // newest version first
-      const bin = path.join(vscodeExts, dirs[0], 'debugAdapters', 'bin', 'OpenDebugAD7')
-      if (fs.existsSync(bin)) return bin
+  const extensionRoots = [
+    path.join(home, '.vscode', 'extensions'),
+    path.join(home, '.vscode-insiders', 'extensions'),
+  ]
+
+  for (const vscodeExts of extensionRoots) {
+    if (!fs.existsSync(vscodeExts)) continue
+    const dirs = fs.readdirSync(vscodeExts).filter((d) => d.startsWith('ms-vscode.cpptools-'))
+    if (dirs.length === 0) continue
+
+    dirs.sort().reverse() // newest version first
+    for (const dir of dirs) {
+      for (const binName of candidates) {
+        const bin = path.join(vscodeExts, dir, 'debugAdapters', 'bin', binName)
+        if (fs.existsSync(bin)) return bin
+      }
     }
   }
 
