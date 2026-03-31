@@ -12,7 +12,7 @@ typedef struct Node {
 } Node;
 
 Node* create_node(int value) {
-  Node* n = malloc(sizeof(Node));
+  Node* n = (Node*)malloc(sizeof(Node));
   n->value = value;
   n->next = NULL;
   return n;
