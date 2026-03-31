@@ -30,11 +30,11 @@ function FolderIcon() {
 }
 
 const PLACEHOLDER: Record<string, string> = {
-  python:     'Path to script  e.g. /home/user/script.py',
+  python: 'Path to script  e.g. /home/user/script.py',
   javascript: 'Path to script  e.g. /home/user/app.js',
-  cpp:        'Path to compiled binary  e.g. /home/user/program',
-  c:          'Path to compiled binary  e.g. /home/user/program',
-  java:       'Main class name  e.g. Main',
+  cpp: 'Path to compiled binary  e.g. /home/user/program',
+  c: 'Path to compiled binary  e.g. /home/user/program',
+  java: 'Main class name  e.g. Main',
 }
 
 interface Props {
@@ -43,12 +43,14 @@ interface Props {
 }
 
 export default function FileInputBar({ language, onLaunch }: Readonly<Props>) {
-  const [value,     setValue]     = useState('')
+  const [value, setValue] = useState('')
   const [launching, setLaunching] = useState(false)
-  const status   = useDebugStore((s) => s.status)
+  const status = useDebugStore((s) => s.status)
   const setState = useDebugStore((s) => s.setState)
 
-  useEffect(() => { if (status !== 'idle') setLaunching(false) }, [status])
+useEffect(() => {
+        if (status === 'idle' || status === 'terminated') setLaunching(false)
+    }, [status])
 
   useEffect(() => {
     const cleanup = (window as ElectronWindow).electronAPI?.on('app:fileSelected', (data: unknown) => {

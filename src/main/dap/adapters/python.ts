@@ -1,6 +1,11 @@
+// src/main/dap/adapters/python.ts
+// Launches debugpy as a subprocess and connects the DAP client to it.
+// Calls ensureDebugpy() first so the user never sees "No module named debugpy".
+
 import { spawn, ChildProcess } from 'node:child_process'
 import * as net from 'node:net'
 import * as path from 'node:path'
+import { ensureDebugpy } from '../../setup/ensureDebugpy'
 
 export interface LaunchedAdapter {
   process: ChildProcess
@@ -21,18 +26,22 @@ function getFreePort(): Promise<number> {
 export async function launchPythonAdapter(
   scriptPath: string
 ): Promise<LaunchedAdapter> {
+  // Ensure debugpy is installed before trying to spawn it.
+  // On first run this may take a few seconds — subsequent launches are instant.
+  const python = await ensureDebugpy()
+
   const port = await getFreePort()
 
   return new Promise((resolve, reject) => {
     console.log(`[Python] Spawning debugpy for ${scriptPath} on port ${port}`)
 
-    const child = spawn('python', [
+    const child = spawn(python, [
       '-m', 'debugpy',
       '--listen', `127.0.0.1:${port}`,
       '--wait-for-client',
-      scriptPath
+      scriptPath,
     ], {
-      cwd: path.dirname(scriptPath)
+      cwd: path.dirname(scriptPath),
     })
 
     let resolved = false
@@ -45,7 +54,6 @@ export async function launchPythonAdapter(
       const msg = data.toString().trim()
       console.log('[debugpy stderr]', msg)
 
-      // debugpy prints this when the socket is open and ready
       if (!resolved && (
         msg.includes('Waiting for client to connect') ||
         msg.includes('Listening on') ||
@@ -55,7 +63,6 @@ export async function launchPythonAdapter(
         setTimeout(() => resolve({ process: child, port }), 300)
       }
 
-      // Catch port-in-use and other fatal errors immediately
       if (!resolved && (msg.includes('RuntimeError') || msg.includes('WinError'))) {
         resolved = true
         reject(new Error(`debugpy failed to start: ${msg}`))

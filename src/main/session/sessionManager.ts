@@ -234,21 +234,7 @@ export class SessionManager {
 
   // ── Launch ────────────────────────────────────────────────────────────────
 
-  async launch(language: Language, scriptPath: string, breakpointLines: number[] = []) {
-    this.language      = language
-    this.stepCount     = 0
-    this.prevVarValues = {}
-    this.runToCursorBP = null
-    this.lastStepCommand = 'other'
-    this.bpManager.reset()
-    this.state = { ...INITIAL_DEBUG_STATE, language, status: 'launching' }
-    this.javaAppProcess = null
-
-    console.log(`[Session] Launching ${language} → ${scriptPath}`)
-
-    // FIX 6: save for restart
-    this.lastLaunchArgs = { language, target: scriptPath, breakpoints: breakpointLines }
-
+  private async launchAdapterForLanguage(language: Language, scriptPath: string): Promise<number> {
     let port: number
 
     if (language === 'python') {
@@ -279,6 +265,10 @@ export class SessionManager {
       throw new Error(`Language not yet supported: ${language}`)
     }
 
+    return port
+  }
+
+  private async connectToAdapter(port: number): Promise<void> {
     // BUG FIX 3: Use retry loop instead of hardcoded sleep(1500).
     // On slow machines sleep(1500) causes connection timeout.
     // Retry up to 10 times with 500ms intervals (5s total).
@@ -299,30 +289,15 @@ export class SessionManager {
       throw new Error(`DAPClient could not connect after 10 attempts: ${lastErr?.message}`)
     }
     console.log('[Session] DAPClient connected')
+  }
 
+  private async configureDebugger(language: Language, scriptPath: string, port: number): Promise<void> {
     // FIX 1: pass the correct adapterID for the language
     const initBody = await this.client.initialize(ADAPTER_IDS[language])
     console.log('[Session] Initialize OK, capabilities:', Object.keys(initBody ?? {}))
 
     if (language === 'python') {
-      // FIX 2: register 'initialized' listener BEFORE sending attach
-      // so we never miss the event due to a fast adapter response
-      const initializedPromise = new Promise<void>((resolve) => {
-        const timeout = setTimeout(resolve, 2000)
-        this.client.once('event:initialized', () => { clearTimeout(timeout); resolve() })
-      })
-
-      await this.client.request('attach', {
-        type: 'python',
-        request: 'attach',
-        name: 'Attach to debugpy',
-        connect: { host: '127.0.0.1', port },
-        pathMappings: [],
-        justMyCode: false,
-      })
-
-      await initializedPromise
-
+      await this.attachPythonDebugger(port)
     } else if (language === 'javascript') {
       await this.client.launch({ program: scriptPath, stopOnEntry: false })
     } else if (language === 'c' || language === 'cpp') {
@@ -330,6 +305,48 @@ export class SessionManager {
     } else if (language === 'java') {
       await this.client.request('attach', buildJavaAttachArgs(5005))
     }
+  }
+
+  private async attachPythonDebugger(port: number): Promise<void> {
+    // Send attach WITHOUT awaiting — debugpy won't respond until after
+    // configurationDone, so awaiting here creates a deadlock.
+    // Instead we fire-and-forget and wait only for the 'initialized' event.
+    const initializedPromise = new Promise<void>((resolve) => {
+      const timeout = setTimeout(resolve, 5000)
+      this.client.once('event:initialized', () => { clearTimeout(timeout); resolve() })
+    })
+
+    // fire-and-forget — do NOT await
+    this.client.request('attach', {
+      type: 'python',
+      request: 'attach',
+      name: 'Attach to debugpy',
+      connect: { host: '127.0.0.1', port },
+      pathMappings: [],
+      justMyCode: false,
+    }).catch((err) => console.warn('[Session] attach response error (expected):', err))
+
+    await initializedPromise
+  }
+
+  async launch(language: Language, scriptPath: string, breakpointLines: number[] = []) {
+    this.language      = language
+    this.stepCount     = 0
+    this.prevVarValues = {}
+    this.runToCursorBP = null
+    this.lastStepCommand = 'other'
+    this.bpManager.reset()
+    this.state = { ...INITIAL_DEBUG_STATE, language, status: 'launching' }
+    this.javaAppProcess = null
+
+    console.log(`[Session] Launching ${language} → ${scriptPath}`)
+
+    // FIX 6: save for restart
+    this.lastLaunchArgs = { language, target: scriptPath, breakpoints: breakpointLines }
+
+    const port = await this.launchAdapterForLanguage(language, scriptPath)
+    await this.connectToAdapter(port)
+    await this.configureDebugger(language, scriptPath, port)
 
     for (const line of breakpointLines) {
       await this.bpManager.set({ file: scriptPath, line })
@@ -664,7 +681,12 @@ export class SessionManager {
     this.runToCursorBP = null
     this.lastStepCommand = 'other'
   }
-
+  // ── Reset to idle (used when launch fails) ────────────────────────────────
+  resetToIdle(errorMessage?: string): void {
+    this.state.status = 'idle'
+    if (errorMessage) this.state.errorMessage = errorMessage
+    this.pushToRenderer(IPC.EVENT_TERMINATED, null)
+  }
   // ── Evaluate / set variable ───────────────────────────────────────────────
 
   async evaluate(expression: string): Promise<string> {
